@@ -56,8 +56,6 @@ int readI2C(int address, int bytes)
   return x;
 }
 
-
-
 void setup()
 {
   delay(500);
