@@ -7,10 +7,17 @@
 #define SSID "💩💩💩🦄😵🏳‍🌈"
 #define PASS "un1corn666"
 #define MQTT "10.10.10.19"
-#define MQTTport "1883"
+#define MQTTport 1883
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+void writeI2C(int address, byte data)
+{
+  Wire.beginTransmission(address);
+  Wire.write(data);
+  Wire.endTransmission();
+}
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
@@ -49,12 +56,7 @@ int readI2C(int address, int bytes)
   return x;
 }
 
-void writeI2C(int address, byte data)
-{
-  Wire.beginTransmission(address);
-  Wire.write(data);
-  Wire.endTransmission();
-}
+
 
 void setup()
 {
@@ -81,6 +83,9 @@ void loop()
     reconnect();
   }
   client.loop();
-  value = readI2C(0x04, 2);
-  client.publish("0x04/touch", value);
+  String value = String(readI2C(0x04, 2));
+  char buf[5];
+  value.toCharArray(buf, 5);
+  client.publish("0x04/touch", buf);
+  delay(50);
 }
