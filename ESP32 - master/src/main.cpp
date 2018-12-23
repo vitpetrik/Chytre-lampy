@@ -70,7 +70,7 @@ void setup()
     Serial.print(".");
   }
 
-  client.setServer(mqtt_server, 1883);
+  client.setServer(MQTT, MQTTport);
   client.setCallback(callback);
 }
 
