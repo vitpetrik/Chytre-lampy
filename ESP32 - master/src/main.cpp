@@ -7,6 +7,7 @@
 #include <Adafruit_BME280.h>
 #include "Adafruit_SI1145.h"
 
+//mám dobrou wifinu co? 😂
 #define SSID "💩💩💩🦄😵🏳‍🌈"
 #define PASS "un1corn666"
 #define MQTT "10.10.10.19"
@@ -44,12 +45,13 @@ void writeI2C(int address, byte data)
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
-    String s = "";
-    for(int i = 0; i < length; i++){
-        s += (char) payload[i];
-    }
-//pošle PWM hodnotu z MQTT serveru na attiny
-    writeI2C(0x04, lowByte(s.toInt()));
+  String s = "";
+  for (int i = 0; i < length; i++)
+  {
+    s += (char)payload[i];
+  }
+  //pošle PWM hodnotu z MQTT serveru na attiny
+  writeI2C(0x04, lowByte(s.toInt()));
 }
 
 void reconnect()
@@ -91,13 +93,13 @@ void setup()
 
 void loop()
 {
-//pokud nejsme připojeni, tak se připojíme 🙃
+  //pokud nejsme připojeni, tak se připojíme 🙃
   if (!client.connected())
   {
     reconnect();
   }
   client.loop();
-//každou sekundu pošleme data ze senzorů na MQTT
+  //každou sekundu pošleme data ze senzorů na MQTT
   if ((millis() - sensorMillis) > 1000)
   {
     client.publish("0x04/temp", String(bme.readTemperature()).c_str());
@@ -107,10 +109,10 @@ void loop()
     client.publish("0x04/ir", String(uv.readIR()).c_str());
     sensorMillis = millis();
   }
-//pokud je lampa zapnutá a zároveň uběhl předem daný interval od zapnutí tak vypneme lampu
+  //pokud je lampa zapnutá a zároveň uběhl předem daný interval od zapnutí tak vypneme lampu
   if (((millis() - onMillis) > 1000) && turnOn)
   {
-//ale pokud se někdo dotýká čidla, vypínat nebudeme a zrestartujeme počítadlo 😉
+    //ale pokud se někdo dotýká čidla, vypínat nebudeme a zrestartujeme počítadlo 😉
     if (readI2Cint(0x04) > 700)
     {
       onMillis = millis();
@@ -122,12 +124,12 @@ void loop()
       client.publish("0x04/onoff", "false");
     }
   }
-//pokud je lampa vypnutá kontrolujeme čidlo doteku
+  //pokud je lampa vypnutá kontrolujeme čidlo doteku
   if (!turnOn)
   {
     if (readI2Cint(0x04) > 700)
     {
-      writeI2C(0x04, (byte) 255);
+      writeI2C(0x04, (byte)255);
       readI2Cint(0x04);
       onMillis = millis();
       turnOn = true;
