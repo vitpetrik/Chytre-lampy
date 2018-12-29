@@ -11,6 +11,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include "Adafruit_SI1145.h"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 //mám dobrou wifinu co? 😂
 #define SSID "💩💩💩🦄😵🏳‍🌈"
@@ -30,6 +32,8 @@ unsigned long sensorMillis = 0;
 unsigned long onMillis = 0;
 boolean turnOn = false;
 
+Adafruit_SSD1306 display(128, 64, &Wire, 16);
+
 //přečte INT z attiny
 int readTouch(int address)
 {
@@ -41,39 +45,86 @@ int readTouch(int address)
   return x;
 }
 
-int * readLocation (int address){
-  static int data[3];
+uint8_t *readLocation(uint8_t address)
+{
+  static uint8_t data[2];
+  delay(1);
   Wire.beginTransmission(address);
-  Wire.write(0xFF);
+  Wire.write(0x05);
   Wire.endTransmission();
-  delay(10);
-  Wire.requestFrom(address, 3);
+  delay(1);
+  Wire.requestFrom(address, 2);
   data[0] = Wire.read();
   data[1] = Wire.read();
-  data[2] = Wire.read();
+  readTouch(address);
   return data;
 }
 
-//zapíše PWM hodnotu na I2C
-void writePWM(byte address, byte data)
+void i2cscanner()
 {
-  Wire.beginTransmission(address);
-  Wire.write((byte)0x00);
-  Wire.write(data);
-  Wire.endTransmission();
-  readTouch(0x04);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("I2C nalezeno na:");
+  for (uint8_t i = 1; i < 128; i++)
+  {
+    Wire.beginTransmission(i);
+    if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
+    {
+      uint8_t *p = readLocation(i);
+      display.print("Adr: ");
+      display.print(String(i, HEX).c_str());
+      display.print(" X: ");
+      display.print(String(p[0], HEX).c_str());
+      display.print(" Y: ");
+      display.println(String(p[1], HEX).c_str());
+      display.display();
+      //delay(1500);
+    }
+  }
 }
 
-void writeSpeed(byte address, byte data)
+//zapíše PWM hodnotu na I2C
+void writePWM(uint8_t address, uint8_t data)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x00);
+  Wire.write(data);
+  Wire.endTransmission();
+  readTouch(address);
+}
+
+void writeGPS(uint8_t address, uint8_t X, uint8_t Y)
+{
+  Wire.beginTransmission(address);
+  Wire.write((uint8_t)0x04);
+  Wire.write(X);
+  Wire.write(Y);
+  Wire.endTransmission();
+  readTouch(address);
+}
+
+void writeAddress(uint8_t address, uint8_t addrr)
+{
+  if (addrr < 128)
+  {
+    Wire.beginTransmission(address);
+    Wire.write(0x03);
+    Wire.write(addrr);
+    Wire.endTransmission();
+    readTouch(address);
+  }
+}
+
+void writeSpeed(uint8_t address, uint8_t data)
 {
   Wire.beginTransmission(address);
   Wire.write(0x01);
   Wire.write(data);
   Wire.endTransmission();
-  readTouch(0x04);
+  readTouch(address);
 }
 
-void writeFade(byte address, boolean foo)
+void writeFade(uint8_t address, boolean foo)
 {
   Wire.beginTransmission(address);
   Wire.write(0x02);
@@ -86,10 +137,10 @@ void writeFade(byte address, boolean foo)
     Wire.write(0x00);
   }
   Wire.endTransmission();
-  readTouch(0x04);
+  readTouch(address);
 }
 
-void callback(char *t, byte *payload, unsigned int length)
+void callback(char *t, uint8_t *payload, unsigned int length)
 {
   String topic(t);
   String s = "";
@@ -108,7 +159,7 @@ void callback(char *t, byte *payload, unsigned int length)
   {
     if (s == "true")
       writeFade(0x04, true);
-      client.publish("0x04/debug", "Plynulá změna zapnuta");
+    client.publish("0x04/debug", "Plynulá změna zapnuta");
     if (s == "false")
     {
       writeFade(0x04, false);
@@ -127,21 +178,42 @@ void callback(char *t, byte *payload, unsigned int length)
 void setup()
 {
   delay(500);
-  Wire.begin(22, 23);
+  //Wire.begin(22, 23); //ESP32 bez LoRa
+  Wire.begin(4, 15); //ESP32 s LoRou
   bme.begin(0x76);
   uv.begin();
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
   Serial.begin(9600);
   WiFi.begin(SSID, PASS);
-
+  display.println("Connecting to WiFi");
+  display.println("");
+  display.display();
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
+    display.print(".");
+    display.display();
   }
-
+  display.println("");
+  display.println("");
+  display.println("Connected at IP: ");
+  display.println("");
+  display.println(WiFi.localIP());
+  display.display();
+  delay(1000);
+  display.clearDisplay();
+  display.setCursor(0, 0);
   client.setServer(MQTT, MQTTport);
   client.setCallback(callback);
-  writeFade(0x04, true);
+  delay(10);
+  writeGPS(0x04, 0x96, 0x66);
+  writeAddress(0x04, 0x66);
+  i2cscanner();
 }
 
 void loop()
@@ -164,7 +236,7 @@ void loop()
   {
     client.loop();
   }
-  
+
   //každou sekundu pošleme data ze senzorů na MQTT
   if ((millis() - sensorMillis) > 1000)
   {
@@ -174,11 +246,6 @@ void loop()
     client.publish("0x04/vis", String(uv.readVisible()).c_str());
     client.publish("0x04/ir", String(uv.readIR()).c_str());
     sensorMillis = millis(); //resetujeme odpočítávač
-    int * location;
-    location = readLocation(0x04);
-    client.publish("0x04/debug", String(location[0]).c_str());
-    client.publish("0x04/X", String(location[1]).c_str());
-    client.publish("0x04/Y", String(location[2]).c_str());
   }
 
   //pokud je lampa zapnutá a zároveň uběhl předem daný interval od zapnutí tak vypneme lampu
@@ -191,7 +258,6 @@ void loop()
   }
 
   //pokud je lampa vypnutá kontrolujeme čidlo doteku
-
   if (readTouch(0x04) > 700)
   {
     if (!turnOn)
