@@ -13,28 +13,35 @@
 #define ledPin PB1
 
 int value;
-byte address = 0x04;
-byte pwmValue = 0;
-byte prevPwmValue = 0;
-byte rychlost = 60;
-byte X = 22;
-byte Y = 120;
+uint8_t address;
+uint8_t pwmValue = 0;
+uint8_t prevPwmValue = 0;
+uint8_t rychlost = 60;
+uint8_t X = 0x69;
+uint8_t Y = 0x88;
+uint8_t foo = 0x00;
+uint8_t bar = 0x00;
 boolean fade = true;
 boolean location = false;
 
 //EEPROM
-//0x00 - address, 0x01 - X souřadnice, 0x02 - Y souřadnice, 0x03 - rychlost, 0x04 - fade
+//0x10 - address, 0x11 - X souřadnice, 0x12 - Y souřadnice, 0x13 - rychlost, 0x14 - fade
 void loadEEPROM() {
-  if (EEPROM.read(0x00) != 0x00) {
-    address = EEPROM.read(0x00);
+  address = EEPROM.read(0xF0);
+  if (address == 0x00 || address == 0xFF) {
+    address = 0x04;
   }
-  X = EEPROM.read(0x01);
-  Y = EEPROM.read(0x02);
-  rychlost = EEPROM.read(0x03);
-  if (EEPROM.read(0x04) == 255) {
+  delay(10);
+  X = EEPROM.read(0xF1);
+  delay(10);
+  Y = EEPROM.read(0xF2);
+  delay(10);
+  rychlost = EEPROM.read(0xF3);
+  delay(10);
+  if (EEPROM.read(0xF4) == 255) {
     fade = true;
   }
-  else if (EEPROM.read(0x04) == 0) {
+  else if (EEPROM.read(0xF4) == 0) {
     fade = false;
   }
 }
@@ -45,7 +52,7 @@ void beginI2C() {
   TinyWireS.onRequest(requestEvent);
 }
 
-void fading (byte now, byte prev) {
+void fading (uint8_t now, uint8_t prev) {
   if ( now > prev ) {
     for ( byte i = prev; i <= now; i++) {
       setPWM(i);
@@ -64,7 +71,7 @@ void fading (byte now, byte prev) {
   }
 }
 
-void setPWM(byte value) {
+void setPWM(uint8_t value) {
   if ( value == 0 ) {
     cbi(TCCR0A, COM0B1);
     PORTB = PORTB & B11111101;
@@ -80,40 +87,43 @@ void setPWM(byte value) {
 }
 
 //když master pošle data, tak je hodíme na LEDku jako PWM
-void receiveEvent(uint8_t byty)
+void receiveEvent(uint8_t num)
 {
-  if (byty == 1) {
-    if ( TinyWireS.receive() == 0xFF ) {
+  switch (TinyWireS.receive()) {
+    case 0x00:
+      pwmValue = TinyWireS.receive();
+      break;
+    case 0x01:
+      rychlost = TinyWireS.receive();
+      EEPROM.write(0xF3, rychlost);
+      break;
+    case 0x02:
+      foo = TinyWireS.receive();
+      if (foo == 0xFF) {
+        fade = true;
+        EEPROM.write(0xF4, 0xFF);
+      }
+      else if (foo == 0x00) {
+        fade = false;
+        EEPROM.write(0xF4, 0x00);
+      }
+      break;
+    case 0x03:
+      address = TinyWireS.receive();
+      EEPROM.write(0xF0, address);
+      break;
+    case 0x04:
+      X = TinyWireS.receive();
+      Y = TinyWireS.receive();
+      EEPROM.write(0xF1, X);
+      EEPROM.write(0xF2, Y);
+      break;
+    case 0x05:
       location = true;
-    }
-  }
-  if (byty == 2) {
-    switch (TinyWireS.receive()) {
-      case 0x00:
-        pwmValue = TinyWireS.receive();
-        break;
-      case 0x01:
-        rychlost = TinyWireS.receive();
-        EEPROM.write(0x03, rychlost);
-        break;
-      case 0x02:
-        byte foo = TinyWireS.receive();
-        if (foo == 0xFF) {
-          fade = true;
-          EEPROM.write(0x04, 0xFF);
-        }
-        else if (foo == 0x00) {
-          fade = false;
-          EEPROM.write(0x04, 0x00);
-        }
-        break;
-      case 0x03:
-        address = TinyWireS.receive();
-        EEPROM.write(0x00, address);
-        break;
-      default:
-        break;
-    }
+      delay(1);
+      break;
+    default:
+      break;
   }
 }
 
@@ -121,7 +131,6 @@ void receiveEvent(uint8_t byty)
 void requestEvent()
 {
   if (location) {
-    TinyWireS.send(address);
     TinyWireS.send(X);
     TinyWireS.send(Y);
     location = false;
