@@ -210,9 +210,9 @@ void setup()
   display.setCursor(0, 0);
   client.setServer(MQTT, MQTTport);
   client.setCallback(callback);
-  delay(10);
-  writeGPS(0x04, 0x96, 0x66);
-  writeAddress(0x04, 0x66);
+  //delay(10);
+  //writeGPS(0x04, 0x96, 0x66);
+  //writeAddress(0x04, 0x66);
   i2cscanner();
 }
 
