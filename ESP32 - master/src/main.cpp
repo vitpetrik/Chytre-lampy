@@ -1,13 +1,12 @@
 //Vít Petřík@2018
+/*
+Mám úžasný a vysoce funkční kódy
+*/
 #include <Arduino.h>
-#define TWI_FREQ 400000L
 #include <Wire.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <WebServer.h>
-#include <ESPmDNS.h>
-#include <Update.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include "Adafruit_SI1145.h"
@@ -23,7 +22,6 @@
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-WebServer server(80);
 
 Adafruit_BME280 bme;
 Adafruit_SI1145 uv = Adafruit_SI1145();
@@ -34,7 +32,7 @@ boolean turnOn = false;
 
 Adafruit_SSD1306 display(128, 64, &Wire, 16);
 
-//přečte INT z attiny
+//přečte hodnotu z dotykového čidla
 int readTouch(int address)
 {
   int x = 0;
@@ -45,54 +43,55 @@ int readTouch(int address)
   return x;
 }
 
+//přečte souřadnice a vrátí je v poli [ X, Y ]
 uint8_t *readLocation(uint8_t address)
 {
   static uint8_t data[2];
-  delay(1);
   Wire.beginTransmission(address);
   Wire.write(0x05);
   Wire.endTransmission();
-  delay(1);
   Wire.requestFrom(address, 2);
   data[0] = Wire.read();
   data[1] = Wire.read();
-  readTouch(address);
   return data;
 }
 
+//začekuje všechny adresy a pokud objeví lampu, tak jí vypíše na displey
 void i2cscanner()
 {
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println("I2C nalezeno na:");
+  display.display();
   for (uint8_t i = 1; i < 128; i++)
   {
     Wire.beginTransmission(i);
+
+    //pokud je přenos úspěšný, a zároveň to je vážně lampa, tak přečteme souřadnice a vypíšeme je na display
     if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
     {
       uint8_t *p = readLocation(i);
-      display.print("Adr: ");
+      display.print("0x");
       display.print(String(i, HEX).c_str());
-      display.print(" X: ");
+      display.print(" X: 0x");
       display.print(String(p[0], HEX).c_str());
-      display.print(" Y: ");
+      display.print(" Y: 0x");
       display.println(String(p[1], HEX).c_str());
       display.display();
-      //delay(1500);
     }
   }
 }
 
 //zapíše PWM hodnotu na I2C
-void writePWM(uint8_t address, uint8_t data)
+void writePWM(uint8_t address, uint8_t PWM)
 {
   Wire.beginTransmission(address);
   Wire.write(0x00);
-  Wire.write(data);
+  Wire.write(PWM);
   Wire.endTransmission();
-  readTouch(address);
 }
 
+//zapíše souřadnice X a Y do ATtiny
 void writeGPS(uint8_t address, uint8_t X, uint8_t Y)
 {
   Wire.beginTransmission(address);
@@ -100,35 +99,35 @@ void writeGPS(uint8_t address, uint8_t X, uint8_t Y)
   Wire.write(X);
   Wire.write(Y);
   Wire.endTransmission();
-  readTouch(address);
 }
 
-void writeAddress(uint8_t address, uint8_t addrr)
+//zapíše novou I2C adresu
+void writeAddress(uint8_t address, uint8_t newAddress)
 {
-  if (addrr < 128)
+  if (newAddress < 128)
   {
     Wire.beginTransmission(address);
     Wire.write(0x03);
-    Wire.write(addrr);
+    Wire.write(newAddress);
     Wire.endTransmission();
-    readTouch(address);
   }
 }
 
-void writeSpeed(uint8_t address, uint8_t data)
+//zapíše, jak rychle se má rozsvicet lampa
+void writeSpeed(uint8_t address, uint8_t speed)
 {
   Wire.beginTransmission(address);
   Wire.write(0x01);
-  Wire.write(data);
+  Wire.write(speed);
   Wire.endTransmission();
-  readTouch(address);
 }
 
-void writeFade(uint8_t address, boolean foo)
+//zapíše, jestli má být plynulá změna úrovně osvětlení
+void writeFade(uint8_t address, boolean fade)
 {
   Wire.beginTransmission(address);
   Wire.write(0x02);
-  if (foo)
+  if (fade)
   {
     Wire.write(0xFF);
   }
@@ -137,9 +136,9 @@ void writeFade(uint8_t address, boolean foo)
     Wire.write(0x00);
   }
   Wire.endTransmission();
-  readTouch(address);
 }
 
+//funkce se vyvolá, pokud přijeme MQTT zprávu
 void callback(char *t, uint8_t *payload, unsigned int length)
 {
   String topic(t);
@@ -177,21 +176,28 @@ void callback(char *t, uint8_t *payload, unsigned int length)
 
 void setup()
 {
-  delay(500);
+  //Nastavíme I2C sběrnici
   //Wire.begin(22, 23); //ESP32 bez LoRa
   Wire.begin(4, 15); //ESP32 s LoRou
   bme.begin(0x76);
   uv.begin();
+
+  //inicializujeme display
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
+
   Serial.begin(9600);
+  
+  //připojíme se na Wi-Fi
   WiFi.begin(SSID, PASS);
   display.println("Connecting to WiFi");
   display.println("");
   display.display();
+
+  //čekáme, až se připojíme
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
@@ -208,11 +214,12 @@ void setup()
   delay(1000);
   display.clearDisplay();
   display.setCursor(0, 0);
+
+  //nastavíme MQTT server
   client.setServer(MQTT, MQTTport);
   client.setCallback(callback);
-  //delay(10);
-  //writeGPS(0x04, 0x96, 0x66);
-  //writeAddress(0x04, 0x66);
+
+  //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
   i2cscanner();
 }
 
@@ -257,9 +264,10 @@ void loop()
     client.publish("0x04/debug", "LEDka vypnuta");
   }
 
-  //pokud je lampa vypnutá kontrolujeme čidlo doteku
+  //kontrolujeme čidlo doteku
   if (readTouch(0x04) > 700)
   {
+    //pokud lampa není zapnutá, tak jí zapneme
     if (!turnOn)
     {
       writePWM(0x04, 0xFF);
@@ -267,6 +275,7 @@ void loop()
       client.publish("0x04/onoff", "true");
       client.publish("0x04/debug", "Zaznamenán dotek a zapnuta LEDka");
     }
+    //pokud je dotyk, tak vždy restartujeme počítadlo
     onMillis = millis();
   }
 }
