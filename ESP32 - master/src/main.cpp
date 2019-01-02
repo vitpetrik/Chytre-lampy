@@ -56,32 +56,6 @@ uint8_t *readLocation(uint8_t address)
   return data;
 }
 
-//začekuje všechny adresy a pokud objeví lampu, tak jí vypíše na displey
-void i2cscanner()
-{
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("I2C nalezeno na:");
-  display.display();
-  for (uint8_t i = 1; i < 128; i++)
-  {
-    Wire.beginTransmission(i);
-
-    //pokud je přenos úspěšný, a zároveň to je vážně lampa, tak přečteme souřadnice a vypíšeme je na display
-    if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
-    {
-      uint8_t *p = readLocation(i);
-      display.print("0x");
-      display.print(String(i, HEX).c_str());
-      display.print(" X: 0x");
-      display.print(String(p[0], HEX).c_str());
-      display.print(" Y: 0x");
-      display.println(String(p[1], HEX).c_str());
-      display.display();
-    }
-  }
-}
-
 //zapíše PWM hodnotu na I2C
 void writePWM(uint8_t address, uint8_t PWM)
 {
@@ -138,18 +112,95 @@ void writeFade(uint8_t address, boolean fade)
   Wire.endTransmission();
 }
 
+void lamp(void *parameters)
+{
+
+  int address = int(parameters);
+  unsigned long onMillis = 0;
+  boolean turnOn = false;
+  int value;
+  delay(2000);
+  display.setTextSize(7);
+  while (true)
+  {
+    digitalWrite(2, HIGH);
+    if (((millis() - onMillis) > 5000) && turnOn)
+    {
+      vTaskPrioritySet(NULL, 10);
+      writePWM(address, 0x00);
+      vTaskPrioritySet(NULL, 1);
+      turnOn = false;
+      client.publish("0x04/onoff", "false");
+    }
+    vTaskPrioritySet(NULL, 10);
+    value = readTouch(address);
+    vTaskPrioritySet(NULL, 1);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.println(value);
+    display.display();
+    //kontrolujeme čidlo doteku
+    if (value > 700)
+    {
+      //pokud lampa není zapnutá, tak jí zapneme
+      if (!turnOn)
+      {
+        client.publish("0x04/onoff", "true");
+        vTaskPrioritySet(NULL, 10);
+        writePWM(address, 0xFF);
+        vTaskPrioritySet(NULL, 1);
+        turnOn = true;
+      }
+      //pokud je dotyk, tak vždy restartujeme počítadlo
+      onMillis = millis();
+    }
+  }
+}
+
+//začekuje všechny adresy a pokud objeví lampu, tak jí vypíše na displey
+void i2cscanner(void *parameters)
+{
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("I2C nalezeno na:");
+  display.display();
+  for (uint8_t i = 1; i < 128; i++)
+  {
+    Wire.beginTransmission(i);
+
+    //pokud je přenos úspěšný, a zároveň to je vážně lampa, tak přečteme souřadnice a vypíšeme je na display
+    if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
+    {
+      uint8_t *p = readLocation(i);
+      display.print("0x");
+      display.print(String(i, HEX).c_str());
+      display.print(" X: 0x");
+      display.print(String(p[0], HEX).c_str());
+      display.print(" Y: 0x");
+      display.println(String(p[1], HEX).c_str());
+      display.display();
+      xTaskCreatePinnedToCore(lamp, "blinky", 10000, (void *)i, 1, NULL, 1);
+    }
+  }
+  vTaskDelete(NULL);
+}
+
 //funkce se vyvolá, pokud přijeme MQTT zprávu
 void callback(char *t, uint8_t *payload, unsigned int length)
 {
+  vTaskPrioritySet(NULL, 10);
   String topic(t);
   String s = "";
   for (int i = 0; i < length; i++)
   {
     s += (char)payload[i];
   }
+  Serial.println(s);
+  Serial.println(topic);
   if (topic == "0x04/pwm")
   {
     writePWM(0x04, lowByte(s.toInt()));
+    readTouch(0x04);
     String out = "Poslána hodnota PWM: " + s;
     client.publish("0x04/debug", out.c_str());
   }
@@ -157,11 +208,15 @@ void callback(char *t, uint8_t *payload, unsigned int length)
   if (topic == "0x04/fade")
   {
     if (s == "true")
-      writeFade(0x04, true);
+      delayMicroseconds(1000);
+    writeFade(0x04, true);
+    readTouch(0x04);
     client.publish("0x04/debug", "Plynulá změna zapnuta");
     if (s == "false")
     {
+      delayMicroseconds(1000);
       writeFade(0x04, false);
+      readTouch(0x04);
       client.publish("0x04/debug", "Plynulá změna vypnuta");
     }
   }
@@ -169,113 +224,114 @@ void callback(char *t, uint8_t *payload, unsigned int length)
   if (topic == "0x04/speed")
   {
     writeSpeed(0x04, lowByte(s.toInt()));
+    readTouch(0x04);
     String out = "Rychlost změny změněna na: " + s;
     client.publish("0x04/debug", out.c_str());
   }
+  vTaskPrioritySet(NULL, 1);
 }
 
-void setup()
+void MQTTsensors(void *parameters)
 {
-  //Nastavíme I2C sběrnici
-  //Wire.begin(22, 23); //ESP32 bez LoRa
-  Wire.begin(4, 15); //ESP32 s LoRou
-  bme.begin(0x76);
-  uv.begin();
-
-  //inicializujeme display
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-
-  Serial.begin(9600);
-  
-  //připojíme se na Wi-Fi
-  WiFi.begin(SSID, PASS);
-  display.println("Connecting to WiFi");
-  display.println("");
-  display.display();
-
-  //čekáme, až se připojíme
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-    display.print(".");
-    display.display();
-  }
-  display.println("");
-  display.println("");
-  display.println("Connected at IP: ");
-  display.println("");
-  display.println(WiFi.localIP());
-  display.display();
-  delay(1000);
-  display.clearDisplay();
-  display.setCursor(0, 0);
-
-  //nastavíme MQTT server
-  client.setServer(MQTT, MQTTport);
-  client.setCallback(callback);
-
-  //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
-  i2cscanner();
-}
-
-void loop()
-{
-  //pokud nejsme připojeni, tak se připojíme 🙃
-  if (!client.connected())
-  {
-    String clientId = "0x04";
-    clientId += String(random(0xffff), HEX);
-
-    if (client.connect(clientId.c_str()))
-    {
-      client.subscribe("0x04/pwm");
-      client.subscribe("0x04/fade");
-      client.subscribe("0x04/speed");
-      client.publish("0x04/debug", "0x04 připojeno k MQTT");
-    }
-  }
-  else
-  {
-    client.loop();
-  }
-
-  //každou sekundu pošleme data ze senzorů na MQTT
-  if ((millis() - sensorMillis) > 1000)
+  while (true)
   {
     client.publish("0x04/temp", String(bme.readTemperature()).c_str());
     client.publish("0x04/press", String(bme.readPressure()).c_str());
     client.publish("0x04/hum", String(bme.readHumidity()).c_str());
     client.publish("0x04/vis", String(uv.readVisible()).c_str());
     client.publish("0x04/ir", String(uv.readIR()).c_str());
-    sensorMillis = millis(); //resetujeme odpočítávač
+    delay(2000);
   }
+}
 
-  //pokud je lampa zapnutá a zároveň uběhl předem daný interval od zapnutí tak vypneme lampu
-  if (((millis() - onMillis) > 5000) && turnOn)
+void MQTThandle(void *parameters)
+{
+  client.setServer(MQTT, MQTTport);
+  client.setCallback(callback);
+  boolean sensors = false;
+  Serial.println("AHOJ0");
+  while (true)
   {
-    writePWM(0x04, 0x00);
-    turnOn = false;
-    client.publish("0x04/onoff", "false");
-    client.publish("0x04/debug", "LEDka vypnuta");
-  }
-
-  //kontrolujeme čidlo doteku
-  if (readTouch(0x04) > 700)
-  {
-    //pokud lampa není zapnutá, tak jí zapneme
-    if (!turnOn)
+    if (!client.connected())
     {
-      writePWM(0x04, 0xFF);
-      turnOn = true;
-      client.publish("0x04/onoff", "true");
-      client.publish("0x04/debug", "Zaznamenán dotek a zapnuta LEDka");
+      Serial.println("AHOJ2");
+      String clientId = "0x04";
+      clientId += String(random(0xffff), HEX);
+
+      if (client.connect(clientId.c_str()))
+      {
+        Serial.println("AHOJ3");
+        client.subscribe("0x04/pwm");
+        client.subscribe("0x04/fade");
+        client.subscribe("0x04/speed");
+        client.publish("0x04/debug", "0x04 připojeno k MQTT");
+        if (!sensors)
+        {
+          //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 3, NULL, 1);
+          sensors = true;
+        }
+      }
     }
-    //pokud je dotyk, tak vždy restartujeme počítadlo
-    onMillis = millis();
+    else
+    {
+      client.loop();
+      delay(1);
+    }
   }
+}
+
+void WiFiconnection(void *parameters)
+{
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("pripojuji se");
+    WiFi.begin(SSID, PASS);
+  }
+  vTaskDelete(NULL);
+}
+
+void setup()
+{
+  //Nastavíme I2C sběrnici
+  //Wire.begin(22, 23); //ESP32 bez LoRa
+  Wire.begin(4, 15, 400000L); //ESP32 s LoRou
+  bme.begin(0x76);
+  uv.begin();
+
+  pinMode(2, OUTPUT);
+
+  //inicializujeme display
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextColor(WHITE);
+  display.setTextSize(3);
+  display.println("Vitecek");
+  display.print("je buh!");
+  display.display();
+  writePWM(0x04, 255);
+  readTouch(0x04);
+  delay(1000);
+  writePWM(0x04, 0);
+  readTouch(0x04);
+  delay(1000);
+  delay(4000);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  Serial.begin(9600);
+  //WiFi.begin(SSID, PASS);
+  //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
+  xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(MQTThandle, "MQTT", 100000, (void *)1, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(WiFiconnection, "WiFiconnection", 100000, (void *)1, 1, NULL, 0);
+
+  //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 3, NULL, 1);
+}
+
+void loop()
+{
+  vTaskDelete(NULL);
 }
