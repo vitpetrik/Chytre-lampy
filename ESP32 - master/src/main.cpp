@@ -310,6 +310,8 @@ void setup()
   display.println("Vitecek");
   display.print("je buh!");
   display.display();
+  writeFade(0x04, true);
+  readTouch(0x04);
   writePWM(0x04, 255);
   readTouch(0x04);
   delay(1000);
