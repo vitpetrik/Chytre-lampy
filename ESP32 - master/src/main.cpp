@@ -14,9 +14,13 @@ Mám úžasný a vysoce funkční kódy
 #include <Adafruit_SSD1306.h>
 
 //mám dobrou wifinu co? 😂
-#define SSID "💩💩💩🦄😵🏳‍🌈"
+/*#define SSID "💩💩💩🦄😵🏳‍🌈"
 #define PASS "un1corn666"
 #define MQTT "10.10.10.19"
+#define MQTTport 1883*/
+#define SSID "ThinkSpot"
+#define PASS "0123456789"
+#define MQTT "192.168.137.1"
 #define MQTTport 1883
 #define SEALEVELPRESSURE_HPA (1013.25)
 
