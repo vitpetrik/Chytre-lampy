@@ -1,6 +1,6 @@
 //Vít Petřík@2018
 /*
-Mám úžasný a vysoce funkční kódy
+Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 */
 #include <Arduino.h>
 #include <Wire.h>
@@ -35,25 +35,14 @@ Adafruit_SSD1306 display(128, 64, &Wire, 16);
 //přečte hodnotu z dotykového čidla
 int readTouch(int address)
 {
-  int x = 0;
-  Wire.requestFrom(address, 2);
+  static uint8_t x = 0;
+  Wire.requestFrom(address, 1);
   x = Wire.read();
-  x = x << 8;
-  x += Wire.read();
+  //x *= 4;
+  // x = x << 8;
+  // x += Wire.read();
+  //Serial.println(x);
   return x;
-}
-
-//přečte souřadnice a vrátí je v poli [ X, Y ]
-uint8_t *readLocation(uint8_t address)
-{
-  static uint8_t data[2];
-  Wire.beginTransmission(address);
-  Wire.write(0x05);
-  Wire.endTransmission();
-  Wire.requestFrom(address, 2);
-  data[0] = Wire.read();
-  data[1] = Wire.read();
-  return data;
 }
 
 //zapíše PWM hodnotu na I2C
@@ -63,28 +52,6 @@ void writePWM(uint8_t address, uint8_t PWM)
   Wire.write(0x00);
   Wire.write(PWM);
   Wire.endTransmission();
-}
-
-//zapíše souřadnice X a Y do ATtiny
-void writeGPS(uint8_t address, uint8_t X, uint8_t Y)
-{
-  Wire.beginTransmission(address);
-  Wire.write((uint8_t)0x04);
-  Wire.write(X);
-  Wire.write(Y);
-  Wire.endTransmission();
-}
-
-//zapíše novou I2C adresu
-void writeAddress(uint8_t address, uint8_t newAddress)
-{
-  if (newAddress < 128)
-  {
-    Wire.beginTransmission(address);
-    Wire.write(0x03);
-    Wire.write(newAddress);
-    Wire.endTransmission();
-  }
 }
 
 //zapíše, jak rychle se má rozsvicet lampa
@@ -112,6 +79,125 @@ void writeFade(uint8_t address, boolean fade)
   Wire.endTransmission();
 }
 
+//zapíše novou I2C adresu
+void writeAddress(uint8_t address, uint8_t newAddress)
+{
+  if (newAddress < 128)
+  {
+    Wire.beginTransmission(address);
+    Wire.write(0x03);
+    Wire.write(newAddress);
+    Wire.endTransmission();
+  }
+}
+
+//zapíše souřadnice X a Y do ATtiny
+void writeGPS(uint8_t address, uint8_t X, uint8_t Y)
+{
+  Wire.beginTransmission(address);
+  Wire.write((uint8_t)0x04);
+  Wire.write(X);
+  Wire.write(Y);
+  Wire.endTransmission();
+}
+
+//přečte souřadnice a vrátí je v poli [ X, Y ]
+uint8_t *readLocation(uint8_t address)
+{
+  static uint8_t data[2];
+  Wire.beginTransmission(address);
+  Wire.write(0x05);
+  Wire.endTransmission();
+  Wire.requestFrom(address, 2);
+  data[0] = Wire.read();
+  data[1] = Wire.read();
+  return data;
+}
+
+void autonomusLamp(uint8_t address, boolean foo, uint8_t high, uint8_t low, uint8_t interval2, uint8_t threshold2)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x06);
+  if (foo)
+  {
+    Wire.write(0xFF);
+  }
+  else
+  {
+    Wire.write(0x00);
+  }
+  Wire.endTransmission();
+
+  Wire.beginTransmission(address);
+  Wire.write(0x07);
+  Wire.write(high);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(address);
+  Wire.write(0x08);
+  Wire.write(low);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(address);
+  Wire.write(0x09);
+  Wire.write(threshold2);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(address);
+  Wire.write(0x0A);
+  Wire.write(interval2);
+  Wire.endTransmission();
+}
+
+void autonomus(uint8_t address, boolean autonomus)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x06);
+  if (autonomus)
+  {
+    Wire.write(0xFF);
+  }
+  else
+  {
+    Wire.write(0x00);
+  }
+  Wire.endTransmission();
+}
+
+void autonomusHigh(uint8_t address, uint8_t PWM)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x07);
+  Wire.write(PWM);
+  Wire.endTransmission();
+}
+
+void autonomusLow(uint8_t address, uint8_t PWM)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x08);
+  Wire.write(PWM);
+  Wire.endTransmission();
+}
+
+void autonomusThreshold(uint8_t address, int thres)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x09);
+  Wire.write(highByte(thres));
+  Wire.write(lowByte(thres));
+  Wire.endTransmission();
+}
+
+void autonomusInterval(uint8_t address, int inter)
+{
+  Wire.beginTransmission(address);
+  Wire.write(0x0A);
+  Wire.write(highByte(inter));
+  Wire.write(lowByte(inter));
+  Wire.endTransmission();
+}
+
 void lamp(void *parameters)
 {
 
@@ -120,35 +206,49 @@ void lamp(void *parameters)
   boolean turnOn = false;
   int value;
   delay(2000);
-  display.setTextSize(7);
+  //display.setTextSize(7);
   while (true)
   {
-    digitalWrite(2, HIGH);
-    if (((millis() - onMillis) > 5000) && turnOn)
+    //digitalWrite(2, HIGH);
+    if (((millis() - onMillis) > 1000) && turnOn)
     {
-      vTaskPrioritySet(NULL, 10);
+      //vTaskPrioritySet(NULL, 10);
       writePWM(address, 0x00);
-      vTaskPrioritySet(NULL, 1);
+      delay(1);
+      //vTaskPrioritySet(NULL, 1);
       turnOn = false;
-      client.publish("0x04/onoff", "false");
+      //client.publish("0x04/onoff", "false");
     }
-    vTaskPrioritySet(NULL, 10);
+    //vTaskPrioritySet(NULL, 10);
     value = readTouch(address);
-    vTaskPrioritySet(NULL, 1);
-    display.clearDisplay();
+    delay(1);
+    //Serial.println(value);
+    //vTaskPrioritySet(NULL, 1);
+    /*display.clearDisplay();
     display.setCursor(0, 0);
     display.println(value);
-    display.display();
+    display.display();*/
     //kontrolujeme čidlo doteku
-    if (value > 700)
+    /*if (!turnOn)
+    {
+      display.clearDisplay();
+      display.setCursor(0, 0);
+      display.setTextSize(2);
+      display.println("Vase IQ je");
+      display.print(random(60, 200));
+      display.display();
+    }*/
+
+    if (value > 170)
     {
       //pokud lampa není zapnutá, tak jí zapneme
       if (!turnOn)
       {
-        client.publish("0x04/onoff", "true");
-        vTaskPrioritySet(NULL, 10);
+        //client.publish("0x04/onoff", "true");
+        //vTaskPrioritySet(NULL, 10);
         writePWM(address, 0xFF);
-        vTaskPrioritySet(NULL, 1);
+        delay(1);
+        //vTaskPrioritySet(NULL, 1);
         turnOn = true;
       }
       //pokud je dotyk, tak vždy restartujeme počítadlo
@@ -295,38 +395,34 @@ void setup()
 {
   //Nastavíme I2C sběrnici
   //Wire.begin(22, 23); //ESP32 bez LoRa
-  Wire.begin(4, 15, 400000L); //ESP32 s LoRou
-  bme.begin(0x76);
-  uv.begin();
+  delay(500);
+  Wire.begin(4, 15); //ESP32 s LoRou
+  //bme.begin(0x76);
+  //uv.begin();
 
   pinMode(2, OUTPUT);
 
   //inicializujeme display
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  /*display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextColor(WHITE);
   display.setTextSize(3);
   display.println("Vitecek");
   display.print("je buh!");
-  display.display();
-  writeFade(0x04, true);
-  readTouch(0x04);
-  writePWM(0x04, 255);
-  readTouch(0x04);
-  delay(1000);
-  writePWM(0x04, 0);
-  readTouch(0x04);
-  delay(1000);
-  delay(4000);
-  display.clearDisplay();
+  display.display();*/
+
+  autonomus(0x04, false);
+
+ /* display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  Serial.begin(9600);
+  Serial.begin(115200);*/
   //WiFi.begin(SSID, PASS);
   //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
-  xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
+  xTaskCreatePinnedToCore(lamp, "blinky", 10000, (void *)0x0B, 1, NULL, 1);
   //xTaskCreatePinnedToCore(MQTThandle, "MQTT", 100000, (void *)1, 1, NULL, 1);
   //xTaskCreatePinnedToCore(WiFiconnection, "WiFiconnection", 100000, (void *)1, 1, NULL, 0);
 
