@@ -12,7 +12,7 @@ Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 #include "Adafruit_SI1145.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <lib.h>
+#include <lamp.h>
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 
