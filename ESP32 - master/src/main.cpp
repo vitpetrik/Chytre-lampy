@@ -20,9 +20,6 @@ Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 #define MQTTport 1883
 #define SEALEVELPRESSURE_HPA (1013.25)
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-
 Adafruit_BME280 bme;
 Adafruit_SI1145 uv = Adafruit_SI1145();
 
@@ -173,7 +170,9 @@ void lamp(void *parameters)
   while (true)
   {
     value = readTouch(address);
-    
+    if(value == 255){
+
+    }
     if (((millis() - onMillis) > 1000) && turnOn)
     {
       delay(1);
@@ -195,7 +194,7 @@ void lamp(void *parameters)
       //pokud je dotyk, tak vždy restartujeme počítadlo
       onMillis = millis();
     }
-    delay(20);
+    delay(20);*
   }
 }
 
@@ -227,115 +226,6 @@ void i2cscanner(void *parameters)
   vTaskDelete(NULL);
 }
 
-//funkce se vyvolá, pokud přijeme MQTT zprávu
-void callback(char *t, uint8_t *payload, unsigned int length)
-{
-  vTaskPrioritySet(NULL, 10);
-  String topic(t);
-  String s = "";
-  for (int i = 0; i < length; i++)
-  {
-    s += (char)payload[i];
-  }
-  Serial.println(s);
-  Serial.println(topic);
-  if (topic == "0x04/pwm")
-  {
-    writePWM(0x04, lowByte(s.toInt()));
-    readTouch(0x04);
-    String out = "Poslána hodnota PWM: " + s;
-    client.publish("0x04/debug", out.c_str());
-  }
-
-  if (topic == "0x04/fade")
-  {
-    if (s == "true")
-      delayMicroseconds(1000);
-    writeFade(0x04, true);
-    readTouch(0x04);
-    client.publish("0x04/debug", "Plynulá změna zapnuta");
-    if (s == "false")
-    {
-      delayMicroseconds(1000);
-      writeFade(0x04, false);
-      readTouch(0x04);
-      client.publish("0x04/debug", "Plynulá změna vypnuta");
-    }
-  }
-
-  if (topic == "0x04/speed")
-  {
-    writeSpeed(0x04, lowByte(s.toInt()));
-    readTouch(0x04);
-    String out = "Rychlost změny změněna na: " + s;
-    client.publish("0x04/debug", out.c_str());
-  }
-  vTaskPrioritySet(NULL, 1);
-}
-
-void MQTTsensors(void *parameters)
-{
-  delay(1000);
-  while (true)
-  {
-    bme.readTemperature();
-   // delay(1);
-    bme.readPressure();
-   // delay(1);
-    bme.readHumidity();
-    //uv.readVisible();
-    //uv.readIR();
-    delay(1000);
-  }
-}
-
-void MQTThandle(void *parameters)
-{
-  client.setServer(MQTT, MQTTport);
-  client.setCallback(callback);
-  boolean sensors = false;
-  Serial.println("AHOJ0");
-  while (true)
-  {
-    if (!client.connected())
-    {
-      Serial.println("AHOJ2");
-      String clientId = "0x04";
-      clientId += String(random(0xffff), HEX);
-
-      if (client.connect(clientId.c_str()))
-      {
-        Serial.println("AHOJ3");
-        client.subscribe("0x04/pwm");
-        client.subscribe("0x04/fade");
-        client.subscribe("0x04/speed");
-        client.publish("0x04/debug", "0x04 připojeno k MQTT");
-        if (!sensors)
-        {
-          //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 3, NULL, 1);
-          sensors = true;
-        }
-      }
-    }
-    else
-    {
-      client.loop();
-      delay(1);
-    }
-  }
-}
-
-void WiFiconnection(void *parameters)
-{
-
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("pripojuji se");
-    WiFi.begin(SSID, PASS);
-  }
-  vTaskDelete(NULL);
-}
-
 void setup()
 {
   //Nastavíme I2C sběrnici
@@ -355,16 +245,10 @@ void setup()
   display.setTextSize(1);
   display.display();
   
-  autonomusThreshold(0x04, 8);
+  //autonomusThreshold(0x04, 8);
   
   Serial.begin(115200);
-  //WiFi.begin(SSID, PASS);
-  //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
-  //xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
-  //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 1, NULL, 1);
-  //xTaskCreatePinnedToCore(MQTThandle, "MQTT", 100000, (void *)1, 1, NULL, 1);
-  //xTaskCreatePinnedToCore(WiFiconnection, "WiFiconnection", 100000, (void *)1, 1, NULL, 0);
-  //
+  xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
 }
 
 void loop()
