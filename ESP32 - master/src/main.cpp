@@ -114,41 +114,6 @@ uint8_t *readLocation(uint8_t address)
   return data;
 }
 
-void autonomusLamp(uint8_t address, boolean foo, uint8_t high, uint8_t low, uint8_t interval2, uint8_t threshold2)
-{
-  Wire.beginTransmission(address);
-  Wire.write(0x06);
-  if (foo)
-  {
-    Wire.write(0xFF);
-  }
-  else
-  {
-    Wire.write(0x00);
-  }
-  Wire.endTransmission();
-
-  Wire.beginTransmission(address);
-  Wire.write(0x07);
-  Wire.write(high);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(address);
-  Wire.write(0x08);
-  Wire.write(low);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(address);
-  Wire.write(0x09);
-  Wire.write(threshold2);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(address);
-  Wire.write(0x0A);
-  Wire.write(interval2);
-  Wire.endTransmission();
-}
-
 void autonomus(uint8_t address, boolean autonomus)
 {
   Wire.beginTransmission(address);
@@ -180,12 +145,11 @@ void autonomusLow(uint8_t address, uint8_t PWM)
   Wire.endTransmission();
 }
 
-void autonomusThreshold(uint8_t address, int thres)
+void autonomusThreshold(uint8_t address, uint8_t thres)
 {
   Wire.beginTransmission(address);
   Wire.write(0x09);
-  Wire.write(highByte(thres));
-  Wire.write(lowByte(thres));
+  Wire.write(thres);
   Wire.endTransmission();
 }
 
@@ -206,54 +170,32 @@ void lamp(void *parameters)
   boolean turnOn = false;
   int value;
   delay(2000);
-  //display.setTextSize(7);
   while (true)
   {
-    //digitalWrite(2, HIGH);
+    value = readTouch(address);
+    
     if (((millis() - onMillis) > 1000) && turnOn)
     {
-      //vTaskPrioritySet(NULL, 10);
-      writePWM(address, 0x00);
       delay(1);
-      //vTaskPrioritySet(NULL, 1);
+      writePWM(address, 0);
       turnOn = false;
-      //client.publish("0x04/onoff", "false");
     }
-    //vTaskPrioritySet(NULL, 10);
-    value = readTouch(address);
-    delay(1);
-    //Serial.println(value);
-    //vTaskPrioritySet(NULL, 1);
-    /*display.clearDisplay();
-    display.setCursor(0, 0);
-    display.println(value);
-    display.display();*/
-    //kontrolujeme čidlo doteku
-    /*if (!turnOn)
-    {
-      display.clearDisplay();
-      display.setCursor(0, 0);
-      display.setTextSize(2);
-      display.println("Vase IQ je");
-      display.print(random(60, 200));
-      display.display();
-    }*/
 
-    if (value > 170)
+    //kontrolujeme čidlo doteku
+
+    if (value > 60)
     {
       //pokud lampa není zapnutá, tak jí zapneme
       if (!turnOn)
       {
-        //client.publish("0x04/onoff", "true");
-        //vTaskPrioritySet(NULL, 10);
-        writePWM(address, 0xFF);
         delay(1);
-        //vTaskPrioritySet(NULL, 1);
+        writePWM(address, 255);
         turnOn = true;
       }
       //pokud je dotyk, tak vždy restartujeme počítadlo
       onMillis = millis();
     }
+    delay(20);
   }
 }
 
@@ -333,14 +275,17 @@ void callback(char *t, uint8_t *payload, unsigned int length)
 
 void MQTTsensors(void *parameters)
 {
+  delay(1000);
   while (true)
   {
-    client.publish("0x04/temp", String(bme.readTemperature()).c_str());
-    client.publish("0x04/press", String(bme.readPressure()).c_str());
-    client.publish("0x04/hum", String(bme.readHumidity()).c_str());
-    client.publish("0x04/vis", String(uv.readVisible()).c_str());
-    client.publish("0x04/ir", String(uv.readIR()).c_str());
-    delay(2000);
+    bme.readTemperature();
+   // delay(1);
+    bme.readPressure();
+   // delay(1);
+    bme.readHumidity();
+    //uv.readVisible();
+    //uv.readIR();
+    delay(1000);
   }
 }
 
@@ -396,37 +341,30 @@ void setup()
   //Nastavíme I2C sběrnici
   //Wire.begin(22, 23); //ESP32 bez LoRa
   delay(500);
-  Wire.begin(4, 15); //ESP32 s LoRou
-  //bme.begin(0x76);
-  //uv.begin();
+  Wire.begin(4, 15, 100000L); //ESP32 s LoRou
+  bme.begin(0x76);
+  uv.begin();
 
   pinMode(2, OUTPUT);
 
   //inicializujeme display
-  /*display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.setCursor(0, 0);
   display.setTextColor(WHITE);
-  display.setTextSize(3);
-  display.println("Vitecek");
-  display.print("je buh!");
-  display.display();*/
-
-  autonomus(0x04, false);
-
- /* display.clearDisplay();
   display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  Serial.begin(115200);*/
+  display.display();
+  
+  autonomusThreshold(0x04, 8);
+  
+  Serial.begin(115200);
   //WiFi.begin(SSID, PASS);
   //přes I2C scanner najdeme všechny lampy na I2C sběrnici a přidáme je do třídy 'lamp'
   //xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
-  xTaskCreatePinnedToCore(lamp, "blinky", 10000, (void *)0x0B, 1, NULL, 1);
+  //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 1, NULL, 1);
   //xTaskCreatePinnedToCore(MQTThandle, "MQTT", 100000, (void *)1, 1, NULL, 1);
   //xTaskCreatePinnedToCore(WiFiconnection, "WiFiconnection", 100000, (void *)1, 1, NULL, 0);
-
-  //xTaskCreatePinnedToCore(MQTTsensors, "MQTTsensors", 10000, (void *)1, 3, NULL, 1);
+  //
 }
 
 void loop()

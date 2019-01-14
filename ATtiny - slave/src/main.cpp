@@ -12,22 +12,22 @@
 
 byte value = 0;
 int correction = 0;
-int threshold = 700;
-int interval = 2000;
+int threshold = 0;
+int interval = 0;
 long onMillis = 0;
-uint8_t address = 0x04;
-uint8_t pwmValue = 0x00;
-uint8_t prevPwmValue = 0x00;
-uint8_t rychlost = 60;
-uint8_t X = 0x00;
-uint8_t Y = 0x00;
-uint8_t foo = 0x00;
-int bar = 0x00;
-uint8_t autonomusHigh = 0xFF;
-uint8_t autonomusLow = 0x00;
+uint8_t address = 0;
+uint8_t pwmValue = 0;
+uint8_t prevPwmValue = 0;
+uint8_t rychlost = 0;
+uint8_t X = 0;
+uint8_t Y = 0;
+uint8_t foo = 0;
+int bar = 0;
+uint8_t autonomusHigh = 0;
+uint8_t autonomusLow = 0;
 boolean fade = true;
 boolean location = false;
-boolean autonomus = false;
+boolean autonomus = true;
 boolean turnOn = false;
 
 //EEPROM
@@ -147,12 +147,8 @@ void receiveEvent(uint8_t num)
     break;
   case 0x09:
     threshold = TinyWireS.receive();
-    foo = TinyWireS.receive();
-    threshold = threshold << 8;
-    threshold += TinyWireS.receive();
 
-    EEPROM.write(highByte(threshold), 0x09);
-    EEPROM.write(lowByte(threshold), 0x0A);
+    EEPROM.write(0x09, threshold);
     goto out;
     break;
   case 0x0A:
@@ -161,8 +157,8 @@ void receiveEvent(uint8_t num)
     interval = interval << 8;
     interval += foo;
 
-    EEPROM.write(highByte(interval), 0x0B);
-    EEPROM.write(lowByte(interval), 0x0C);
+    EEPROM.write(0x0B, highByte(interval));
+    EEPROM.write(0x0C, lowByte(interval));
     goto out;
     break;
   default:
@@ -174,7 +170,6 @@ out:
 
 void loadEEPROM()
 {
-  pwmValue = EEPROM.read(0x00);
 
   rychlost = EEPROM.read(0x01);
 
@@ -205,8 +200,6 @@ void loadEEPROM()
   }
 
   threshold = EEPROM.read(0x09);
-  threshold = threshold << 8;
-  threshold += EEPROM.read(0x0A);
 
   interval = EEPROM.read(0x0B);
   interval = interval << 8;
@@ -221,6 +214,17 @@ void requestEvent()
     TinyWireS.send(X);
     TinyWireS.send(Y);
     location = false;
+  }
+  else if (autonomus)
+  {
+    if (turnOn)
+    {
+      TinyWireS.send(0xFF);
+    }
+    else
+    {
+      TinyWireS.send(0);
+    }
   }
   else
   {
@@ -251,7 +255,6 @@ void setup()
 void loop()
 {
   TinyWireS_stop_check();
-  tws_delay(1);
   bar = QTouchADCTiny.sense(sensePin, refPin, 1) - correction;
   tws_delay(1);
   if (bar > 255)
@@ -267,7 +270,7 @@ void loop()
     value = bar;
   }
 
-  if (false)
+  if (autonomus)
   {
     if (bar > threshold)
     {
