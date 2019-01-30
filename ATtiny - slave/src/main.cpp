@@ -10,11 +10,11 @@
 #define sensePin PB4
 #define ledPin PB1
 
-byte value = 0;
+uint8_t value = 0;
 int correction = 0;
 int threshold = 0;
 int interval = 0;
-long onMillis = 0;
+unsigned long onMillis = 0;
 uint8_t address = 0;
 uint8_t pwmValue = 0;
 uint8_t prevPwmValue = 0;
@@ -25,6 +25,7 @@ uint8_t foo = 0;
 int bar = 0;
 uint8_t autonomusHigh = 0;
 uint8_t autonomusLow = 0;
+uint8_t sample = 1;
 boolean fade = true;
 boolean location = false;
 boolean autonomus = true;
@@ -161,6 +162,10 @@ void receiveEvent(uint8_t num)
     EEPROM.write(0x0C, lowByte(interval));
     goto out;
     break;
+  case 0x0B:
+    sample = TinyWireS.receive();
+    EEPROM.write(0x0D, sample);
+  break;
   default:
     break;
   }
@@ -204,6 +209,7 @@ void loadEEPROM()
   interval = EEPROM.read(0x0B);
   interval = interval << 8;
   interval += EEPROM.read(0x0C);
+  sample = EEPROM.read(0x0D);
 }
 
 //když si master vyžádá data, tak mu pošleme číslo value jako dva byty
@@ -217,9 +223,12 @@ void requestEvent()
   }
   else if (autonomus)
   {
-    if (turnOn)
+    if (turnOn && bar > threshold)
     {
-      TinyWireS.send(0xFF);
+      TinyWireS.send(0x02);
+    }
+    else if(turnOn){
+      TinyWireS.send(0x01);
     }
     else
     {
@@ -241,7 +250,7 @@ void beginI2C()
 
 void setup()
 {
-  delay(50);
+  delay(300);
   MCUSR = 0;
   DDRB = DDRB | B00000010;
   PORTB = PORTB & B11111101;
@@ -249,14 +258,16 @@ void setup()
   loadEEPROM();
   beginI2C();
   delay(1);
-  correction = QTouchADCTiny.sense(sensePin, refPin, 128);
+  correction = QTouchADCTiny.sense(sensePin, refPin, 128)-10;
 }
 
 void loop()
 {
   TinyWireS_stop_check();
-  bar = QTouchADCTiny.sense(sensePin, refPin, 1) - correction;
-  tws_delay(1);
+  tws_delay(2);
+  bar = QTouchADCTiny.sense(sensePin, refPin, sample) - correction;
+  tws_delay(2);
+
   if (bar > 255)
   {
     value = 255;

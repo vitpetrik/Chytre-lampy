@@ -36,30 +36,11 @@ void lamp(void *parameters)
   while (true)
   {
     value = readTouch(address);
-    if(value == 255){
-
-    }
-    if (((millis() - onMillis) > 1000) && turnOn)
-    {
-      delay(1);
-      writePWM(address, 0);
-      turnOn = false;
-    }
-
-    //kontrolujeme čidlo doteku
-
-    if (value > 60)
-    {
-      //pokud lampa není zapnutá, tak jí zapneme
-      if (!turnOn)
-      {
-        delay(1);
-        writePWM(address, 255);
-        turnOn = true;
-      }
-      //pokud je dotyk, tak vždy restartujeme počítadlo
-      onMillis = millis();
-    }
+    display.clearDisplay();
+    display.setTextSize(4);
+    display.setCursor(0, 0);
+    display.println(value);
+    display.display();
     delay(20);
   }
 }
@@ -96,7 +77,7 @@ void setup()
 {
   //Nastavíme I2C sběrnici
   //Wire.begin(22, 23); //ESP32 bez LoRa
-  delay(500);
+  delay(700);
   Wire.begin(4, 15, 100000L); //ESP32 s LoRou
   bme.begin(0x76);
   uv.begin();
@@ -110,9 +91,13 @@ void setup()
   display.setTextColor(WHITE);
   display.setTextSize(1);
   display.display();
-  
-  //autonomusThreshold(0x04, 8);
-  
+  autonomus(0x04, true);
+  autonomusThreshold(0x04, 30);
+  autonomusLow(0x04, 5);
+  autonomusInterval(0x04, 7000);
+  writeSample(0x04, 25);
+  writeSpeed(0x04, 200);
+
   Serial.begin(115200);
   xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
 }

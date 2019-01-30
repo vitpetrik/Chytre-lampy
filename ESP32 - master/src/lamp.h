@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 
 //přečte hodnotu z dotykového čidla
@@ -80,6 +81,13 @@ uint8_t *readLocation(uint8_t address)
   data[0] = Wire.read();
   data[1] = Wire.read();
   return data;
+}
+
+void writeSample(uint8_t address, uint8_t sample){
+  Wire.beginTransmission(address);
+  Wire.write(0x0B);
+  Wire.write(sample);
+  Wire.endTransmission();
 }
 
 void autonomus(uint8_t address, boolean autonomus)
