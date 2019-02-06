@@ -55,7 +55,6 @@ void i2cscanner(void *parameters)
   for (uint8_t i = 1; i < 128; i++)
   {
     Wire.beginTransmission(i);
-
     //pokud je přenos úspěšný, a zároveň to je vážně lampa, tak přečteme souřadnice a vypíšeme je na display
     if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
     {
@@ -69,6 +68,7 @@ void i2cscanner(void *parameters)
       display.display();
       xTaskCreatePinnedToCore(lamp, "blinky", 10000, (void *)i, 1, NULL, 1);
     }
+    delayMicroseconds(10);
   }
   vTaskDelete(NULL);
 }
@@ -78,7 +78,7 @@ void setup()
   //Nastavíme I2C sběrnici
   //Wire.begin(22, 23); //ESP32 bez LoRa
   delay(700);
-  Wire.begin(4, 15, 100000L); //ESP32 s LoRou
+  Wire.begin(4, 15); //ESP32 s LoRou
   bme.begin(0x76);
   uv.begin();
 
@@ -91,12 +91,8 @@ void setup()
   display.setTextColor(WHITE);
   display.setTextSize(1);
   display.display();
-  autonomus(0x04, true);
-  autonomusThreshold(0x04, 30);
+
   autonomusLow(0x04, 5);
-  autonomusInterval(0x04, 7000);
-  writeSample(0x04, 25);
-  writeSpeed(0x04, 200);
 
   Serial.begin(115200);
   xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);

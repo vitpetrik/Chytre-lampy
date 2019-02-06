@@ -143,7 +143,7 @@ void receiveEvent(uint8_t num)
     break;
   case 0x08:
     autonomusLow = TinyWireS.receive();
-    EEPROM.write(0x08, autonomusHigh);
+    EEPROM.write(0x08, autonomusLow);
     goto out;
     break;
   case 0x09:
@@ -256,6 +256,7 @@ void setup()
   PORTB = PORTB & B11111101;
   QTouchADCTiny.init();
   loadEEPROM();
+  delay(1);
   beginI2C();
   delay(1);
   correction = QTouchADCTiny.sense(sensePin, refPin, 128)-10;
@@ -296,8 +297,8 @@ void loop()
 
     if (((millis() - onMillis) > interval) && turnOn)
     {
-      turnOn = false;
       pwmValue = autonomusLow;
+      turnOn = false;      
     }
   }
 
