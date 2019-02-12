@@ -1,6 +1,5 @@
-#include <Arduino.h>
 #include <QTouchADCTiny.h>
-#include <TinyWireS.h>
+#include <Wire.h>
 #include <EEPROM.h>
 
 #define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
@@ -26,10 +25,13 @@ int bar = 0;
 uint8_t autonomusHigh = 0;
 uint8_t autonomusLow = 0;
 uint8_t sample = 1;
+uint8_t modeSelect = 3;
+uint8_t outputValue = 0;
 boolean fade = true;
 boolean location = false;
-boolean autonomus = true;
 boolean turnOn = false;
+unsigned long fadeMicros = 0;
+unsigned long milliRead = 0;
 
 //EEPROM
 //0x10 - address, 0x11 - X souřadnice, 0x12 - Y souřadnice, 0x13 - rychlost, 0x14 - fade
@@ -53,26 +55,17 @@ void setPWM(uint8_t pwm)
   }
 }
 
-void fading(uint8_t now, uint8_t prev)
+void fading()
 {
-  if (now > prev)
-  {
-    for (byte i = prev; i <= now; i++)
-    {
-      setPWM(i);
-      delayMicroseconds(rychlost * 40);
-      if (i == 255)
-        break;
+  if ((millis() - fadeMicros) > ( rychlost) ) {
+    fadeMicros = millis();
+    if (prevPwmValue > pwmValue) {
+      prevPwmValue--;
+      setPWM(prevPwmValue);
     }
-  }
-  else
-  {
-    for (byte i = prev; i >= now; i--)
-    {
-      setPWM(i);
-      delayMicroseconds(rychlost * 40);
-      if (i == 0)
-        break;
+    else if ( prevPwmValue < pwmValue) {
+      prevPwmValue++;
+      setPWM(prevPwmValue);
     }
   }
 }
@@ -80,94 +73,92 @@ void fading(uint8_t now, uint8_t prev)
 //když master pošle data, tak je hodíme na LEDku jako PWM
 void receiveEvent(uint8_t num)
 {
-  switch (TinyWireS.receive())
+  switch (Wire.read())
   {
-  case 0x00:
-    pwmValue = TinyWireS.receive();
-    EEPROM.write(0x00, pwmValue);
-    goto out;
-    break;
-  case 0x01:
-    rychlost = TinyWireS.receive();
-    EEPROM.write(0x01, rychlost);
-    goto out;
-    break;
-  case 0x02:
-    foo = TinyWireS.receive();
-    if (foo == 0xFF)
-    {
-      fade = true;
-      EEPROM.write(0x02, 0xFF);
+    case 0x00:
+      pwmValue = Wire.read();
+      EEPROM.write(0x00, pwmValue);
+      if ( pwmValue > prevPwmValue) {
+        turnOn = true;
+      }
+      else if ( pwmValue < prevPwmValue) {
+        turnOn = false;
+      }
       goto out;
-    }
-    else if (foo == 0x00)
-    {
-      fade = false;
-      EEPROM.write(0x02, 0x00);
+      break;
+    case 0x01:
+      rychlost = Wire.read();
+      EEPROM.write(0x01, rychlost);
       goto out;
-    }
-    break;
-  case 0x03:
-    address = TinyWireS.receive();
-    EEPROM.write(0x03, address);
-    goto out;
-    break;
-  case 0x04:
-    X = TinyWireS.receive();
-    Y = TinyWireS.receive();
-    EEPROM.write(0x04, X);
-    EEPROM.write(0x05, Y);
-    goto out;
-    break;
-  case 0x05:
-    location = true;
-    goto out;
-    break;
-  case 0x06:
-    foo = TinyWireS.receive();
-    if (foo == 0xFF)
-    {
-      autonomus = true;
+      break;
+    case 0x02:
+      foo = Wire.read();
+      if (foo == 0xFF)
+      {
+        fade = true;
+        EEPROM.write(0x02, 0xFF);
+        goto out;
+      }
+      else if (foo == 0x00)
+      {
+        fade = false;
+        EEPROM.write(0x02, 0x00);
+        goto out;
+      }
+      break;
+    case 0x03:
+      address = Wire.read();
+      EEPROM.write(0x03, address);
       goto out;
-    }
-    else if (foo == 0x00)
-    {
-      autonomus = false;
+      break;
+    case 0x04:
+      X = Wire.read();
+      Y = Wire.read();
+      EEPROM.write(0x04, X);
+      EEPROM.write(0x05, Y);
       goto out;
-    }
-    break;
-  case 0x07:
-    autonomusHigh = TinyWireS.receive();
-    EEPROM.write(0x07, autonomusHigh);
-    goto out;
-    break;
-  case 0x08:
-    autonomusLow = TinyWireS.receive();
-    EEPROM.write(0x08, autonomusLow);
-    goto out;
-    break;
-  case 0x09:
-    threshold = TinyWireS.receive();
+      break;
+    case 0x05:
+      location = true;
+      goto out;
+      break;
+    case 0x07:
+      autonomusHigh = Wire.read();
+      EEPROM.write(0x07, autonomusHigh);
+      goto out;
+      break;
+    case 0x08:
+      autonomusLow = Wire.read();
+      EEPROM.write(0x08, autonomusLow);
+      goto out;
+      break;
+    case 0x09:
+      threshold = Wire.read();
 
-    EEPROM.write(0x09, threshold);
-    goto out;
-    break;
-  case 0x0A:
-    interval = TinyWireS.receive();
-    foo = TinyWireS.receive();
-    interval = interval << 8;
-    interval += foo;
+      EEPROM.write(0x09, threshold);
+      goto out;
+      break;
+    case 0x0A:
+      interval = Wire.read();
+      foo = Wire.read();
+      interval = interval << 8;
+      interval += foo;
 
-    EEPROM.write(0x0B, highByte(interval));
-    EEPROM.write(0x0C, lowByte(interval));
-    goto out;
-    break;
-  case 0x0B:
-    sample = TinyWireS.receive();
-    EEPROM.write(0x0D, sample);
-  break;
-  default:
-    break;
+      EEPROM.write(0x0B, highByte(interval));
+      EEPROM.write(0x0C, lowByte(interval));
+      goto out;
+      break;
+    case 0x0B:
+      sample = Wire.read();
+      EEPROM.write(0x0D, sample);
+      break;
+    case 0x0C:
+      modeSelect = Wire.read();
+      turnOn = false;
+      onMillis = 0;
+      break;
+    default:
+      break;
   }
 out:
   __asm__("nop\n\t");
@@ -198,7 +189,7 @@ void loadEEPROM()
 
   autonomusHigh = EEPROM.read(0x07);
   autonomusLow = EEPROM.read(0x08);
-
+  pwmValue = autonomusLow;
   if (autonomusHigh == autonomusLow)
   {
     autonomusLow = 0x00;
@@ -217,35 +208,21 @@ void requestEvent()
 {
   if (location)
   {
-    TinyWireS.send(X);
-    TinyWireS.send(Y);
+    Wire.write(X);
+    Wire.write(Y);
     location = false;
-  }
-  else if (autonomus)
-  {
-    if (turnOn && bar > threshold)
-    {
-      TinyWireS.send(0x02);
-    }
-    else if(turnOn){
-      TinyWireS.send(0x01);
-    }
-    else
-    {
-      TinyWireS.send(0);
-    }
   }
   else
   {
-    TinyWireS.send(value);
+    Wire.write(outputValue);
   }
 }
 
 void beginI2C()
 {
-  TinyWireS.begin(address);
-  TinyWireS.onReceive(receiveEvent);
-  TinyWireS.onRequest(requestEvent);
+  Wire.begin(address);
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
 }
 
 void setup()
@@ -259,46 +236,72 @@ void setup()
   delay(1);
   beginI2C();
   delay(1);
-  correction = QTouchADCTiny.sense(sensePin, refPin, 128)-10;
+  correction = QTouchADCTiny.sense(sensePin, refPin, 128) - 10;
 }
+
+
 
 void loop()
 {
-  TinyWireS_stop_check();
-  tws_delay(2);
-  bar = QTouchADCTiny.sense(sensePin, refPin, sample) - correction;
-  tws_delay(2);
+  if (((millis() - milliRead) > 10) && millis() > 1000) {
+    milliRead = millis();
+    bar = QTouchADCTiny.sense(sensePin, refPin, sample) - correction;
 
-  if (bar > 255)
-  {
-    value = 255;
-  }
-  else if (bar < 0)
-  {
-    value = 0;
-  }
-  else
-  {
-    value = bar;
-  }
-
-  if (autonomus)
-  {
-    if (bar > threshold)
+    if (bar > 255)
     {
-      if (!turnOn)
-      {
-        pwmValue = autonomusHigh;
-        turnOn = true;
-      }
-      //pokud je dotyk, tak vždy restartujeme počítadlo
-      onMillis = millis();
+      value = 255;
+    }
+    else if (bar < 0)
+    {
+      value = 0;
+    }
+    else
+    {
+      value = bar;
     }
 
-    if (((millis() - onMillis) > interval) && turnOn)
-    {
-      pwmValue = autonomusLow;
-      turnOn = false;      
+    switch (modeSelect) {
+      case 0:
+        outputValue = value;
+        break;
+      case 1:
+        if (value > threshold) {
+          outputValue = 1;
+        }
+        else {
+          outputValue = 0;
+        }
+        break;
+      case 2:
+        if (value > threshold)
+        {
+          if (!turnOn)
+          {
+            pwmValue = autonomusHigh;
+            turnOn = true;
+          }
+        }
+        break;
+      case 3:
+        if (value > threshold)
+        {
+          if (!turnOn)
+          {
+            pwmValue = autonomusHigh;
+            turnOn = true;
+          }
+          //pokud je dotyk, tak vždy restartujeme počítadlo
+          onMillis = millis();
+        }
+
+        if (((millis() - onMillis) > interval) && turnOn)
+        {
+          pwmValue = autonomusLow;
+          turnOn = false;
+        }
+        break;
+      default:
+        break;
     }
   }
 
@@ -307,11 +310,11 @@ void loop()
     if (!fade)
     {
       setPWM(pwmValue);
+      prevPwmValue = pwmValue;
     }
     else
     {
-      fading(pwmValue, prevPwmValue);
+      fading();
     }
-    prevPwmValue = pwmValue;
   }
 }

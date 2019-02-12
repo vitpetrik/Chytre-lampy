@@ -97,26 +97,35 @@ void lightradius(uint8_t x, uint8_t y, uint8_t lastValue, int address)
     }
 }
 
-void lamp(void *parameters)
+void koko(void *parameters)
 {
-  int address = int(parameters);
-  delay(20);
-  uint8_t *p = readLocation(address);
+  uint8_t address = int(parameters);
   uint8_t value = 0;
   uint8_t lastValue = 0;
-  Serial.println("--------------");
+
+  Wire.beginTransmission(address);
+  if (Wire.endTransmission() != 0)
+  {
+    vTaskDelete(NULL);
+  }
+
+  Serial.println("");
   Serial.print("Lampa nalezena na I2C adrese: ");
   Serial.println(address);
-  Serial.println("Se souřadnicemi: ");
-  Serial.print("X: ");
-  Serial.println(String(p[0], HEX).c_str());
-  Serial.print("Y: ");
-  Serial.println(String(p[1], HEX).c_str());
-  Serial.println("--------------");
   Serial.println("");
+
+  delay(100);
+
+  uint8_t *p = readLocation(address);
+  Serial.println(p[0]);
+  Serial.println(p[1]);
+  delay(100);
+  writePWM(address, 255);
   while (true)
   {
+
     value = readTouch(address);
+
     if (value != lastValue)
     {
       Serial.println("--------------");
@@ -161,24 +170,11 @@ void lamp(void *parameters)
       lightradius(p[0], p[1], lastValue, address);
     }
     lastValue = value;
+
+    Serial.println(value);
+
     delay(20);
   }
-}
-
-//začekuje všechny adresy a pokud objeví lampu, tak jí vypíše na displey
-void i2cscanner(void *parameters)
-{
-  for (uint8_t i = 1; i < 128; i++)
-  {
-    Wire.beginTransmission(i);
-    //pokud je přenos úspěšný, a zároveň to je vážně lampa, tak přečteme souřadnice a vypíšeme je na display
-    if (Wire.endTransmission() == 0 && i != 60 && i != 96 && i != 118)
-    {
-      xTaskCreatePinnedToCore(lamp, "blinky", 10000, (void *)i, 1, NULL, 1);
-    }
-    delayMicroseconds(1);
-  }
-  vTaskDelete(NULL);
 }
 
 void setup()
@@ -187,16 +183,22 @@ void setup()
 
   delay(700);
   //Wire.begin(4, 15); //ESP32 s LoRou
-  Wire.begin(22, 23, 100000L); //ESP32 bez LoRa
+  Wire.begin(22, 23); //ESP32 bez LoRa
   bme.begin(0x76);
   uv.begin();
-
   pinMode(2, OUTPUT);
 
   //inicializujeme display
 
   Serial.begin(115200);
-  xTaskCreatePinnedToCore(i2cscanner, "scanner", 10000, (void *)1, 1, NULL, 1);
+  Serial.println("");
+
+  for (int i = 1; i < 50; i++)
+  {
+    xTaskCreatePinnedToCore(koko, "lamp", 10000, (void *)i, 3, NULL, 1);
+    delayMicroseconds(200);
+  }
+  vTaskDelete(NULL);
 }
 
 void loop()
