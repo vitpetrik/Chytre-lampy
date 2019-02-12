@@ -71,7 +71,7 @@ void fading()
 }
 
 //když master pošle data, tak je hodíme na LEDku jako PWM
-void receiveEvent(uint8_t num)
+void receiveEvent()
 {
   switch (Wire.read())
   {
