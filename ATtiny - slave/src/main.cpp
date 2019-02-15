@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <QTouchADCTiny.h>
 #include <Wire.h>
 #include <EEPROM.h>
@@ -71,7 +72,7 @@ void fading()
 }
 
 //když master pošle data, tak je hodíme na LEDku jako PWM
-void receiveEvent()
+void receiveEvent(uint8_t num)
 {
   switch (Wire.read())
   {
