@@ -19,11 +19,12 @@ Adafruit_BME280 bme;
 Adafruit_SI1145 uv = Adafruit_SI1145();
 
 SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
 
 uint8_t lampCount = 0;
-uint8_t triggerY = 0;
-uint8_t triggerX = 0;
+uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
+unsigned long triggerNum = 0;
 uint8_t low = 5;
 uint8_t high = 255;
 uint16_t interval = 5000;
@@ -38,99 +39,90 @@ void lamp(void *parameters)
   uint8_t address = int(parameters);
   uint8_t value = 0;
   uint8_t lastValue = 0;
-  uint8_t pos[2];
+  uint8_t pos[2] = {0, 0};
+  unsigned long lastTriggerNum = 1000;
   unsigned long onMillis = 0;
   bool on = false;
+  double rad;
 
-  while (true)
+  if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
   {
-    if (xSemaphoreTake(i2c_mutex, 1 / portTICK_PERIOD_MS))
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() != 0)
     {
-      Wire.beginTransmission(address);
-      if (Wire.endTransmission() != 0)
-      {
-        xSemaphoreGive(i2c_mutex);
-        vTaskDelete(NULL);
-      }
       xSemaphoreGive(i2c_mutex);
-      break;
+      vTaskDelete(NULL);
     }
+    lampCount++;
+    triggerCount++;
+    xSemaphoreGive(i2c_mutex);
   }
-
-  lampCount++;
-
-  delay(10);
-
-  while (true)
+  else
   {
-    if (xSemaphoreTake(i2c_mutex, 1 / portTICK_PERIOD_MS))
-    {
-      writeMode(address, 1);
-      delayMicroseconds(1000);
-      writeSpeed(address, 15);
-      delayMicroseconds(1000);
-      writeSample(address, 20);
-      delayMicroseconds(1000);
-      writeThreshold(address, 80);
-      delayMicroseconds(1000);
-      autonomusHigh(address, 255);
-      delayMicroseconds(1000);
-      autonomusLow(address, 5);
-      delayMicroseconds(1000);
-      autonomusInterval(address, 5000);
-      xSemaphoreGive(i2c_mutex);
-      break;
-    }
-  }
-
-  delay(10);
-
-  while (true)
-  {
-    if (xSemaphoreTake(i2c_mutex, 1 / portTICK_PERIOD_MS))
-    {
-      writePWM(address, 255);
-      delayMicroseconds(500);
-      xSemaphoreGive(i2c_mutex);
-      break;
-    }
-  }
-
-  delay(1000);
-
-  while (true)
-  {
-    if (xSemaphoreTake(i2c_mutex, 1 / portTICK_PERIOD_MS))
-    {
-      writePWM(address, 5);
-      delayMicroseconds(500);
-      xSemaphoreGive(i2c_mutex);
-      break;
-    }
+    ESP.restart();
   }
 
   delay(100);
 
-  while (true)
+  if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
   {
-    if (xSemaphoreTake(i2c_mutex, 50 / portTICK_PERIOD_MS))
-    {
-      uint8_t *p = readPosition(address);
-      pos[0] = p[0];
-      pos[1] = p[1];
-      xSemaphoreGive(i2c_mutex);
-      Serial.print("Adresa: ");
-      Serial.print(address);
-      Serial.print(": X - ");
-      Serial.print(pos[0]);
-      Serial.print(" Y - ");
-      Serial.println(pos[1]);
-      break;
-    }
+    writeMode(address, 1);
+    writeSpeed(address, 15);
+    writeSample(address, 20);
+    writeThreshold(address, 80);
+    autonomusHigh(address, 255);
+    autonomusLow(address, 5);
+    autonomusInterval(address, 5000);
+    xSemaphoreGive(i2c_mutex);
+  }
+  else
+  {
+    ESP.restart();
   }
 
-  Serial.println("");
-  Serial.println(lampCount);
+  delay(100);
+
+  if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS))
+  {
+    writePWM(address, 255);
+    xSemaphoreGive(i2c_mutex);
+  }
+  else
+  {
+    ESP.restart();
+  }
+
+  delay(1000);
+
+  if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS))
+  {
+    writePWM(address, 5);
+    xSemaphoreGive(i2c_mutex);
+  }
+  else
+  {
+    ESP.restart();
+  }
+
+  delay(100);
+
+  if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
+  {
+    uint8_t *p = readPosition(address);
+    xSemaphoreGive(i2c_mutex);
+    pos[0] = p[0];
+    pos[1] = p[1];
+    Serial.print("Adresa: ");
+    Serial.print(address);
+    Serial.print(": X - ");
+    Serial.print(pos[0]);
+    Serial.print(" Y - ");
+    Serial.println(pos[1]);
+  }
+  else
+  {
+    ESP.restart();
+  }
 
   while (true)
   {
@@ -138,43 +130,44 @@ void lamp(void *parameters)
     {
       value = readTouch(address);
       xSemaphoreGive(i2c_mutex);
-      if (value == 1 && ((lastValue != value) || ((millis() - onMillis) > (interval - 100))))
+      if (value == 1 && ((lastValue != value) || ((millis() - onMillis) > 500)) && triggerCount == lampCount && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
       {
+        triggerCount = 0;
+        triggerNum++;
+        triggerPos[0] = pos[0];
+        triggerPos[1] = pos[1];
+        xSemaphoreGive(trigger_mutex);
         Serial.print(address);
         Serial.print(": ");
         Serial.println("dotyk!");
-        triggerCount = 0;
-        triggerX = pos[0];
-        triggerY = pos[1];
         lastValue = value;
       }
-      else if (value == 0 && lastValue != value)
+      else if (value == 0 && lastValue != value && triggerCount == lampCount && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
       {
+        triggerCount = 0;
+        triggerNum++;
+        triggerPos[0] = pos[0];
+        triggerPos[1] = pos[1];
+        xSemaphoreGive(trigger_mutex);
         Serial.print(address);
         Serial.print(": ");
         Serial.println("Konec dotyku!");
-        triggerCount = 0;
-        triggerX = pos[0];
-        triggerY = pos[1];
         lastValue = value;
       }
     }
 
-    if (triggerCount != lampCount)
+    if (lastTriggerNum != triggerNum && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
     {
+      lastTriggerNum = triggerNum;
       triggerCount++;
-      double rad = ((triggerX - pos[0]) * (triggerX - pos[0])) + ((triggerY - pos[1]) * (triggerY - pos[1]));
-      rad = sqrt(rad);
-      Serial.print(address);
-      Serial.print(" radius : ");
-      Serial.println(String(rad).c_str());
-
+      rad = sqrt(((triggerPos[0] - pos[0]) * (triggerPos[0] - pos[0])) + ((triggerPos[1] - pos[1]) * (triggerPos[1] - pos[1])));
+      xSemaphoreGive(trigger_mutex);
       if (rad <= radius)
       {
         if (!on)
         {
           on = true;
-          if (xSemaphoreTake(i2c_mutex, 100 / portTICK_PERIOD_MS))
+          if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS))
           {
             writePWM(address, high);
             xSemaphoreGive(i2c_mutex);
@@ -186,7 +179,7 @@ void lamp(void *parameters)
 
     if (on && (millis() - onMillis) > interval)
     {
-      if (xSemaphoreTake(i2c_mutex, 100 / portTICK_PERIOD_MS))
+      if (xSemaphoreTake(i2c_mutex, 1000 / portTICK_PERIOD_MS))
       {
         writePWM(address, low);
         xSemaphoreGive(i2c_mutex);
@@ -223,7 +216,7 @@ void sensors(void *parameters)
 void setup()
 {
   // put your setup code here, to run once:
-  delay(700);
+  delay(400);
 
   Serial.begin(230400);
   Wire.begin(22, 23); //ESP32 bez LoRa

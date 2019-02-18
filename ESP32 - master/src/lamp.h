@@ -15,7 +15,7 @@ uint8_t *readPosition(uint8_t address)
   Wire.beginTransmission(address);
   Wire.write(0x05);
   Wire.endTransmission();
-  Wire.requestFrom(address, 2);
+  Wire.requestFrom(address, (int) 2);
   data[0] = Wire.read();
   data[1] = Wire.read();
   return data;
