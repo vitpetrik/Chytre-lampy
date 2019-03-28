@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <QTouchADCTiny.h>
 #include <Wire.h>
 #include <EEPROM.h>
@@ -31,14 +30,14 @@ uint8_t outputValue = 0;
 boolean fade = true;
 boolean location = false;
 boolean turnOn = false;
+boolean commonAnode = false;
 unsigned long fadeMicros = 0;
 unsigned long milliRead = 0;
 
-//EEPROM
-//0x10 - address, 0x11 - X souřadnice, 0x12 - Y souřadnice, 0x13 - rychlost, 0x14 - fade
-
 void setPWM(uint8_t pwm)
 {
+  if (commonAnode)
+    pwm = ~pwm;
   if (pwm == 0)
   {
     cbi(TCCR0A, COM0B1);
@@ -158,6 +157,21 @@ void receiveEvent(uint8_t num)
       turnOn = false;
       onMillis = 0;
       break;
+    case 0x0D:
+      foo = Wire.read();
+      if (foo == 0xFF)
+      {
+        commonAnode = true;
+        EEPROM.write(0x0E, 0xFF);
+        goto out;
+      }
+      else if (foo == 0x00)
+      {
+        commonAnode = false;
+        EEPROM.write(0x0E, 0x00);
+        goto out;
+      }
+      break;
     default:
       break;
   }
@@ -202,6 +216,15 @@ void loadEEPROM()
   interval = interval << 8;
   interval += EEPROM.read(0x0C);
   sample = EEPROM.read(0x0D);
+
+  if (EEPROM.read(0x0E) == 255)
+  {
+    commonAnode = true;
+  }
+  else if (EEPROM.read(0x0E) == 0)
+  {
+    commonAnode = false;
+  }
 }
 
 //když si master vyžádá data, tak mu pošleme číslo value jako dva byty

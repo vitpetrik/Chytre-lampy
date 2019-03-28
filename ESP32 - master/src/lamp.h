@@ -1,58 +1,116 @@
-#include <Arduino.h>
-#include <Wire.h>
-
 //přečte hodnotu z dotykového čidla
+
+SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
+int tickCount = 20;
+
+bool isLampHere(uint8_t address)
+{
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      if (Wire.endTransmission() != 0)
+      {
+        xSemaphoreGive(i2c_mutex);
+        return false;
+      }
+      xSemaphoreGive(i2c_mutex);
+      return true;
+    }
+  }
+  return false;
+}
+
 uint8_t readTouch(int address)
 {
-  Wire.requestFrom(address, 1);
-  return Wire.read();
+  uint8_t msg = 0;
+  if (xSemaphoreTake(i2c_mutex, 1) == pdTRUE)
+  {
+    Wire.requestFrom(address, 1);
+    msg = Wire.read();
+    xSemaphoreGive(i2c_mutex);
+  }
+  return msg;
 }
 
 //přečte souřadnice a vrátí je v poli [ X, Y ]
 uint8_t *readPosition(uint8_t address)
 {
   static uint8_t data[2];
-  Wire.beginTransmission(address);
-  Wire.write(0x05);
-  Wire.endTransmission();
-  Wire.requestFrom(address, (int) 2);
-  data[0] = Wire.read();
-  data[1] = Wire.read();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x05);
+      Wire.endTransmission();
+      Wire.requestFrom(address, 2);
+      data[0] = Wire.read();
+      data[1] = Wire.read();
+      xSemaphoreGive(i2c_mutex);
+      return data;
+    }
+  }
   return data;
 }
 
 //zapíše PWM hodnotu na I2C
 void writePWM(uint8_t address, uint8_t PWM)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x00);
-  Wire.write(PWM);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x00);
+      Wire.write(PWM);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 //zapíše, jak rychle se má rozsvicet lampa
 void writeSpeed(uint8_t address, uint8_t speed)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x01);
-  Wire.write(speed);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x01);
+      Wire.write(speed);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 //zapíše, jestli má být plynulá změna úrovně osvětlení
 void writeFade(uint8_t address, boolean fade)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x02);
-  if (fade)
+  while (true)
   {
-    Wire.write(0xFF);
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x02);
+      if (fade)
+      {
+        Wire.write(0xFF);
+      }
+      else
+      {
+        Wire.write(0x00);
+      }
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
   }
-  else
-  {
-    Wire.write(0x00);
-  }
-  Wire.endTransmission();
 }
 
 //zapíše novou I2C adresu
@@ -60,66 +118,155 @@ void writeI2CAddress(uint8_t address, uint8_t newAddress)
 {
   if (newAddress < 128)
   {
-    Wire.beginTransmission(address);
-    Wire.write(0x03);
-    Wire.write(newAddress);
-    Wire.endTransmission();
+    while (true)
+    {
+      if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+      {
+        Wire.beginTransmission(address);
+        Wire.write(0x03);
+        Wire.write(newAddress);
+        Wire.endTransmission();
+        xSemaphoreGive(i2c_mutex);
+        break;
+      }
+    }
   }
 }
 
 //zapíše souřadnice X a Y do ATtiny
 void writePosition(uint8_t address, uint8_t X, uint8_t Y)
 {
-  Wire.beginTransmission(address);
-  Wire.write((uint8_t)0x04);
-  Wire.write(X);
-  Wire.write(Y);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write((uint8_t)0x04);
+      Wire.write(X);
+      Wire.write(Y);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
-void writeSample(uint8_t address, uint8_t sample){
-  Wire.beginTransmission(address);
-  Wire.write(0x0B);
-  Wire.write(sample);
-  Wire.endTransmission();
+void writeSample(uint8_t address, uint8_t sample)
+{
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x0B);
+      Wire.write(sample);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
-void writeMode(uint8_t address, uint8_t Mode) {
-  Wire.beginTransmission(address);
-  Wire.write(0x0C);
-  Wire.write(Mode);
-  Wire.endTransmission();
+void writeMode(uint8_t address, uint8_t Mode)
+{
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x0C);
+      Wire.write(Mode);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 void writeThreshold(uint8_t address, uint8_t thres)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x09);
-  Wire.write(thres);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x09);
+      Wire.write(thres);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 void autonomusInterval(uint8_t address, int inter)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x0A);
-  Wire.write(highByte(inter));
-  Wire.write(lowByte(inter));
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x0A);
+      Wire.write(highByte(inter));
+      Wire.write(lowByte(inter));
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 void autonomusHigh(uint8_t address, uint8_t PWM)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x07);
-  Wire.write(PWM);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x07);
+      Wire.write(PWM);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
 
 void autonomusLow(uint8_t address, uint8_t PWM)
 {
-  Wire.beginTransmission(address);
-  Wire.write(0x08);
-  Wire.write(PWM);
-  Wire.endTransmission();
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x08);
+      Wire.write(PWM);
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
+}
+
+void commonAnode(uint8_t address, bool commonAnode)
+{
+  while (true)
+  {
+    if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
+    {
+      Wire.beginTransmission(address);
+      Wire.write(0x0D);
+      if (commonAnode)
+      {
+        Wire.write(0xFF);
+      }
+      else
+      {
+        Wire.write(0);
+      }
+      Wire.endTransmission();
+      xSemaphoreGive(i2c_mutex);
+      break;
+    }
+  }
 }
