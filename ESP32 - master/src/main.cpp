@@ -13,9 +13,9 @@ Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 #include <ota.h>
 #include <telnet.h>
 #include <lamp.h>
-
+// FreeRTOS Semaphore pro zamezeni konfliktu dat na i2c sbernici 
 SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
-
+// init globalnich promennych
 uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
 uint8_t lampCount = 0;
@@ -24,9 +24,10 @@ uint8_t low = 5;
 uint8_t high = 255;
 uint16_t interval = 100;
 uint8_t radius = 25;
-
+// task kazde lampy
 void lamp(void *parameters)
 {
+  // init lampy
   uint8_t address = int(parameters);
   uint8_t value = 0;
   uint8_t lastValue = 0;
@@ -47,7 +48,7 @@ void lamp(void *parameters)
     autonomusLow(address, 5);
     autonomusInterval(address, 5000);
   }
-
+  // odeslani informace o poloze lampy pri jejim nalezeni na Telnet
   uint8_t *p = readPosition(address);
   pos[0] = p[0];
   pos[1] = p[1];
@@ -57,13 +58,14 @@ void lamp(void *parameters)
   writeStringTelnet(String(pos[0]));
   writeStringTelnet(" Y - ");
   writeStringTelnetln(String(pos[1]));
-
+  
   writePWM(address, high);
   delay(1000);
   writePWM(address, low);
-
+  // smycka tasku lampy
   while (true)
   {
+    // precteni dotyku a vyhodnoceni pokud k nemu doslo
     value = readTouch(address);
     if (value == 1)
     {
@@ -75,6 +77,7 @@ void lamp(void *parameters)
       writeStringTelnet(String(pos[1]));
       writeStringTelnetln(" dotyk");
     }
+    // zavedeni lampy do pole lamp kde se nekdo nachazi
     if (value == 1 && ((lastValue != value) || ((millis() - onMillis) > 500)) && triggerCount == lampCount && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
     {
       triggerCount = 0;
@@ -99,7 +102,7 @@ void lamp(void *parameters)
       writeStringTelnetln("Konec dotyku!");
       lastValue = value;
     }
-
+    // vypocet okolnich lamp ktere maji svitit
     if (lastTriggerNum != triggerNum && xSemaphoreTake(trigger_mutex, 1 / portTICK_PERIOD_MS))
     {
       lastTriggerNum = triggerNum;
@@ -126,7 +129,7 @@ void lamp(void *parameters)
   }
   vTaskDelete(NULL);
 }
-
+// vyhledani lampy na sbernici
 void scanner(void *parameters)
 {
   while (true)
@@ -140,7 +143,7 @@ void scanner(void *parameters)
     }
     delay(1000);
   }
-
+// vytvoreni tasku prave nalezene lampy
 escapeLoop:
   for (int i = 4; i < 50; i++)
   {
