@@ -4,18 +4,22 @@ int tickCount = 20;
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
 {
+  bool presence = false;
   while (true)
   {
     if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
     {
-      Wire.beginTransmission(address);
-      if (Wire.endTransmission() != 0)
+      for (int i = 0; i < 3; i++)
       {
-        xSemaphoreGive(i2c_mutex);
-        return false;
+        Wire.beginTransmission(address);
+        if (Wire.endTransmission() == 0)
+        {
+          xSemaphoreGive(i2c_mutex);
+          return true;
+        }
       }
       xSemaphoreGive(i2c_mutex);
-      return true;
+      return false;
     }
   }
   return false;
@@ -64,7 +68,7 @@ void writePWM(uint8_t address, uint8_t PWM)
       Wire.write(PWM);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -80,11 +84,11 @@ void writeSpeed(uint8_t address, uint8_t speed)
       Wire.write(speed);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
-//zapíše, jestli má být plynulá změna úrovně osvětlení zapnuta/vypnuta 
+//zapíše, jestli má být plynulá změna úrovně osvětlení zapnuta/vypnuta
 void writeFade(uint8_t address, boolean fade)
 {
   while (true)
@@ -103,7 +107,7 @@ void writeFade(uint8_t address, boolean fade)
       }
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -121,7 +125,7 @@ void writeI2CAddress(uint8_t address, uint8_t newAddress)
         Wire.write(newAddress);
         Wire.endTransmission();
         xSemaphoreGive(i2c_mutex);
-        break;
+        return;
       }
     }
   }
@@ -139,7 +143,7 @@ void writePosition(uint8_t address, uint8_t X, uint8_t Y)
       Wire.write(Y);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -155,11 +159,11 @@ void writeSample(uint8_t address, uint8_t sample)
       Wire.write(sample);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
-// volba rezimu 
+// volba rezimu
 void writeMode(uint8_t address, uint8_t Mode)
 {
   while (true)
@@ -171,7 +175,7 @@ void writeMode(uint8_t address, uint8_t Mode)
       Wire.write(Mode);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -187,7 +191,7 @@ void writeThreshold(uint8_t address, uint8_t thres)
       Wire.write(thres);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -204,7 +208,7 @@ void autonomusInterval(uint8_t address, int inter)
       Wire.write(lowByte(inter));
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -220,7 +224,7 @@ void autonomusHigh(uint8_t address, uint8_t PWM)
       Wire.write(PWM);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -236,7 +240,7 @@ void autonomusLow(uint8_t address, uint8_t PWM)
       Wire.write(PWM);
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
 }
@@ -259,7 +263,20 @@ void commonAnode(uint8_t address, bool commonAnode)
       }
       Wire.endTransmission();
       xSemaphoreGive(i2c_mutex);
-      break;
+      return;
     }
   }
+}
+
+void easterEggMode(uint8_t address)
+{
+  if (random(0, 5) == 0)
+  {
+    writePWM(address, 255);
+  }
+  else
+  {
+    writePWM(address, 5);
+  }
+  delay(800);
 }

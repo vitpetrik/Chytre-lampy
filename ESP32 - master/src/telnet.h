@@ -6,12 +6,16 @@ SemaphoreHandle_t telnet_mutex = xSemaphoreCreateMutex();
 
 void decodeString(String s)
 {
+  if (s == "easteregg")
+  {
+    easterEgg = !easterEgg;
+  }
 }
 
 void writeStringTelnetln(String s)
 {
   Serial.println(s);
-  if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
+  /*if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
   {
     for (int i = 0; i < MAX_SRV_CLIENTS; i++)
     {
@@ -21,13 +25,13 @@ void writeStringTelnetln(String s)
         xSemaphoreGive(telnet_mutex);
       }
     }
-  }
+  }*/
 }
 
 void writeStringTelnet(String s)
 {
   Serial.print(s);
-  if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
+  /*if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
   {
     for (int i = 0; i < MAX_SRV_CLIENTS; i++)
     {
@@ -37,7 +41,7 @@ void writeStringTelnet(String s)
         xSemaphoreGive(telnet_mutex);
       }
     }
-  }
+  }*/
 }
 
 void serverHandle(void *parameters)

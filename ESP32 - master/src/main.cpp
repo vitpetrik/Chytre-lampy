@@ -8,44 +8,138 @@ Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 #include <WiFiClient.h>
 #include <math.h>
 #include <ESPmDNS.h>
-#include <Update.h>
-#include <WebServer.h>
-#include <ota.h>
-#include <telnet.h>
-#include <lamp.h>
-// FreeRTOS Semaphore pro zamezeni konfliktu dat na i2c sbernici 
-SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
+// FreeRTOS Semaphore pro zamezeni konfliktu při přistupování triggrovacích proměnných
+SemaphoreHandle_t triggerRead_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t triggerWrite_mutex = xSemaphoreCreateMutex();
+
 // init globalnich promennych
 uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
-uint8_t lampCount = 0;
 unsigned long triggerNum = 0;
+uint8_t lampCount = 0;
 uint8_t low = 5;
 uint8_t high = 255;
 uint16_t interval = 100;
 uint8_t radius = 25;
+bool easterEgg = true;
+
+#include <ota.h>
+#include <telnet.h>
+#include <lamp.h>
+
+void lampTrigger(void *parameters)
+{
+  uint8_t address = int(parameters);
+  uint8_t pos[2] = {0, 0};
+  unsigned long onMillis = 0;
+  unsigned long lastTrigger = 0;
+  bool on = false;
+  double rad;
+
+  uint8_t *p = readPosition(address);
+  pos[0] = p[0];
+  pos[1] = p[1];
+
+  while (true)
+  {
+    if (xSemaphoreTake(triggerRead_mutex, 0))
+    {
+      if (lastTrigger != triggerNum)
+      {
+        rad = sqrt(pow(pos[0] - triggerPos[0], 2) + pow(pos[1] - triggerPos[1], 2));
+        xSemaphoreGive(triggerRead_mutex);
+        if (rad <= radius)
+        {
+          if (!on)
+          {
+            writePWM(address, high);
+            on = true;
+          }
+          onMillis = millis();
+        }
+        triggerCount++;
+        lastTrigger = triggerNum;
+        if (triggerCount == lampCount)
+        {
+          xSemaphoreGive(triggerWrite_mutex);
+        }
+      }
+    }
+    if (on && millis() - onMillis > interval)
+    {
+      on = false;
+      writePWM(address, low);
+    }
+  }
+}
+
 // task kazde lampy
 void lamp(void *parameters)
 {
   // init lampy
   uint8_t address = int(parameters);
-  uint8_t value = 0;
-  uint8_t lastValue = 0;
   uint8_t pos[2] = {0, 0};
-  unsigned long lastTriggerNum = 0;
-  unsigned long onMillis = 0;
-  bool on = false;
-  double rad;
+
+  delay(100);
+  uint8_t *p = readPosition(address);
+  pos[0] = p[0];
+  pos[1] = p[1];
+
+  // smycka tasku lampy
+  while (true)
+  {
+    if (!easterEgg)
+    {
+      if (readTouch(address) == 1)
+      {
+        while (true)
+        {
+          if (xSemaphoreTake(triggerWrite_mutex, 5))
+          {
+            triggerPos[0] = pos[0];
+            triggerPos[1] = pos[1];
+            triggerCount = 0;
+            triggerNum++;
+            break;
+          }
+        }
+      }
+      delay(10);
+    }
+    else
+    {
+      easterEggMode(address);
+    }
+  }
+  vTaskDelete(NULL);
+}
+
+void lampInit(void *parameters)
+{
+  lampCount++;
+
+  uint8_t address = int(parameters);
+  uint8_t pos[2] = {0, 0};
 
   writeMode(address, 1);
+  delay(1);
   if (true)
   {
     commonAnode(address, false);
-    writeSpeed(address, 15);
-    writeSample(address, 20);
-    writeThreshold(address, 50);
+    delay(1);
+    writeSpeed(address, 1);
+    delay(1);
+    writeSample(address, 40);
+    delay(1);
+    writeThreshold(address, 200);
+    delay(1);
     autonomusHigh(address, 255);
+    delay(1);
     autonomusLow(address, 5);
+    delay(1);
     autonomusInterval(address, 5000);
   }
   // odeslani informace o poloze lampy pri jejim nalezeni na Telnet
@@ -58,81 +152,28 @@ void lamp(void *parameters)
   writeStringTelnet(String(pos[0]));
   writeStringTelnet(" Y - ");
   writeStringTelnetln(String(pos[1]));
-  
-  writePWM(address, high);
-  delay(1000);
-  writePWM(address, low);
-  // smycka tasku lampy
-  while (true)
-  {
-    // precteni dotyku a vyhodnoceni pokud k nemu doslo
-    value = readTouch(address);
-    if (value == 1)
-    {
-      writeStringTelnet("Adresa: ");
-      writeStringTelnet(String(address));
-      writeStringTelnet(": X - ");
-      writeStringTelnet(String(pos[0]));
-      writeStringTelnet(" Y - ");
-      writeStringTelnet(String(pos[1]));
-      writeStringTelnetln(" dotyk");
-    }
-    // zavedeni lampy do pole lamp kde se nekdo nachazi
-    if (value == 1 && ((lastValue != value) || ((millis() - onMillis) > 500)) && triggerCount == lampCount && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
-    {
-      triggerCount = 0;
-      triggerNum++;
-      triggerPos[0] = pos[0];
-      triggerPos[1] = pos[1];
-      xSemaphoreGive(trigger_mutex);
-      writeStringTelnet(String(address));
-      writeStringTelnet(": ");
-      writeStringTelnetln("dotyk!");
-      lastValue = value;
-    }
-    else if (value == 0 && lastValue != value && triggerCount == lampCount && xSemaphoreTake(trigger_mutex, 1000 / portTICK_PERIOD_MS))
-    {
-      triggerCount = 0;
-      triggerNum++;
-      triggerPos[0] = pos[0];
-      triggerPos[1] = pos[1];
-      xSemaphoreGive(trigger_mutex);
-      writeStringTelnet(String(address));
-      writeStringTelnet(": ");
-      writeStringTelnetln("Konec dotyku!");
-      lastValue = value;
-    }
-    // vypocet okolnich lamp ktere maji svitit
-    if (lastTriggerNum != triggerNum && xSemaphoreTake(trigger_mutex, 1 / portTICK_PERIOD_MS))
-    {
-      lastTriggerNum = triggerNum;
-      triggerCount++;
-      rad = sqrt(pow(triggerPos[0] - pos[0], 2) + pow(triggerPos[1] - pos[1], 2));
-      xSemaphoreGive(trigger_mutex);
-      if (rad <= radius)
-      {
-        if (!on)
-        {
-          on = true;
-          writePWM(address, high);
-        }
-        onMillis = millis();
-      }
-    }
 
-    if (on && (millis() - onMillis) > interval)
-    {
-      on = false;
-      writePWM(address, low);
-    }
-    yield();
+  for (int i = 0; i < 3; i++)
+  {
+    writePWM(address, high);
+    delay(1000);
+    writePWM(address, low);
+    delay(1000);
   }
+  writePWM(address, low);
+  delay(10);
+  writePWM(address, low);
+
+  xTaskCreatePinnedToCore(lamp, "lamp", 5000, (void *)address, 3, NULL, 1);
+  xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 5000, (void *)address, 3, NULL, 1);
+
   vTaskDelete(NULL);
 }
+
 // vyhledani lampy na sbernici
 void scanner(void *parameters)
 {
-  while (true)
+  while (false)
   {
     for (int i = 0; i < MAX_SRV_CLIENTS; i++)
     {
@@ -149,10 +190,9 @@ escapeLoop:
   {
     if (isLampHere(i))
     {
-      lampCount++;
-      triggerCount = lampCount;
-      xTaskCreatePinnedToCore(lamp, "lamp", 5000, (void *)i, 3, NULL, 1);
+      xTaskCreatePinnedToCore(lampInit, "lamp", 5000, (void *)i, 3, NULL, 1);
     }
+    delay(1);
   }
   vTaskDelete(NULL);
 }
@@ -160,15 +200,12 @@ escapeLoop:
 void setup()
 {
   // put your setup code here, to run once:
-  delay(400);
+  delay(800);
   Serial.begin(115200);
 
-  Wire.begin(22, 23, 60000); //ESP32 bez LoRa
+  Wire.begin(22, 23); //ESP32 bez LoRa
   pinMode(22, INPUT);
   pinMode(23, INPUT);
-
-  xSemaphoreGive(i2c_mutex);
-  xSemaphoreGive(telnet_mutex);
 
   Serial.println("");
   Serial.println("");
@@ -176,7 +213,10 @@ void setup()
   WiFi.softAP("ChytreLampy", "");
   //WiFi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
 
-  xTaskCreatePinnedToCore(serverHandle, "server", 20000, (void *)1, 3, NULL, 1);
+  MDNS.begin("chytrelampy");
+  MDNS.addService("http", "tcp", 80);
+
+  //xTaskCreatePinnedToCore(serverHandle, "server", 20000, (void *)1, 3, NULL, 1);
   xTaskCreatePinnedToCore(OTA, "OTA", 20000, (void *)1, 3, NULL, 1);
   xTaskCreatePinnedToCore(scanner, "scanner", 2000, (void *)1, 3, NULL, 1);
 
