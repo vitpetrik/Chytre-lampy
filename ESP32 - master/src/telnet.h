@@ -4,44 +4,38 @@ WiFiClient serverClients[MAX_SRV_CLIENTS];
 
 SemaphoreHandle_t telnet_mutex = xSemaphoreCreateMutex();
 
-void decodeString(String s)
-{
-  if (s == "easteregg")
-  {
-    easterEgg = !easterEgg;
-  }
-}
-
 void writeStringTelnetln(String s)
 {
   Serial.println(s);
-  /*if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
+  for (int i = 0; i < MAX_SRV_CLIENTS; i++)
   {
-    for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+    if (serverClients[i] && serverClients[i].connected())
     {
-      if (serverClients[i] && serverClients[i].connected())
-      {
-        serverClients[i].println(s);
-        xSemaphoreGive(telnet_mutex);
-      }
+      serverClients[i].println(s);
     }
-  }*/
+  }
 }
 
 void writeStringTelnet(String s)
 {
   Serial.print(s);
-  /*if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS) == pdTRUE)
+  for (int i = 0; i < MAX_SRV_CLIENTS; i++)
   {
-    for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+    if (serverClients[i] && serverClients[i].connected())
     {
-      if (serverClients[i] && serverClients[i].connected())
-      {
-        serverClients[i].print(s);
-        xSemaphoreGive(telnet_mutex);
-      }
+      serverClients[i].print(s);
     }
-  }*/
+  }
+}
+
+void decodeString(String s)
+{
+  s.toLowerCase();
+  if (s.indexOf("easteregg") >= 0)
+  {
+    easterEgg = !easterEgg;
+    writeStringTelnetln("Prepnuti eastereggu 💡"); //juchuuu 🎆🎆🎆🎆🎆🎇🎈🧨✨🎉🎊🎃
+  }
 }
 
 void serverHandle(void *parameters)
@@ -51,7 +45,7 @@ void serverHandle(void *parameters)
   while (true)
   {
     uint8_t i;
-    if (xSemaphoreTake(telnet_mutex, 1000 / portTICK_PERIOD_MS))
+    if (xSemaphoreTake(telnet_mutex, 0))
     {
       if (WiFi.status() == WL_CONNECTED || WiFi.status() == WL_NO_SHIELD)
       {
@@ -84,7 +78,6 @@ void serverHandle(void *parameters)
                 data += (char)serverClients[i].read();
               }
               decodeString(data);
-              Serial.print(data);
             }
           }
           else

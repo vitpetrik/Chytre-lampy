@@ -1,6 +1,6 @@
 // parametr address je adresa lampy na i2c sbernici
 SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
-int tickCount = 20;
+int tickCount = 5;
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
 {
