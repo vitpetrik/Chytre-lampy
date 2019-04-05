@@ -30,6 +30,8 @@ void setup()
   pinMode(pinKoncakOne, INPUT);
   pinMode(pinKoncakTwo, INPUT);
   pinMode(pinSwitch, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(pinSwitch), change, CHANGE);
   TCCR0A = _BV(COM0A1) | _BV(COM0B1) | _BV(WGM01) | _BV(WGM00);
   TCCR0B = _BV(CS00);
 }
@@ -38,21 +40,7 @@ void loop()
 {
   int stavKoncakOne = digitalRead(pinKoncakOne);
   int stavKoncakTwo = digitalRead(pinKoncakTwo);
-  int stavSwitch = digitalRead(pinSwitch);
-
-  // Ovládání pohybu vláčku pomocí tlačítka vypnout/zapnout
-  if(stavSwitch){
-    if(!pohyb){
-      Accelerate();
-      pohyb = true;
-    } else {
-      Stop();
-      pocetSepnuti = 0;
-      pohyb = false;
-    }
-    delay(300*64);            // Ochrana proti několikánásobným stisknutím
-  }
-
+  
   // Reakce na první přejetí čidla
   if(pocetSepnuti == 0){
     if(stavKoncakOne && stavKoncakOne != stateOne){
@@ -105,6 +93,19 @@ void loop()
 here:
   stateOne = stavKoncakOne;
   stateTwo = stavKoncakTwo;
+}
+
+void change(){
+  // Ovládání pohybu vláčku pomocí tlačítka vypnout/zapnout
+    if(!pohyb){
+      Accelerate();
+      pohyb = true;
+    } else {
+      Stop();
+      pocetSepnuti = 0;
+      pohyb = false;
+    }
+    delay(300*64);            // Ochrana proti několikánásobným stisknutím
 }
 
 // Zastavení vláčku
