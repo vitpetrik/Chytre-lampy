@@ -101,5 +101,6 @@ void serverHandle(void *parameters)
       }
       xSemaphoreGive(telnet_mutex);
     }
+    delay(1);
   }
 }
