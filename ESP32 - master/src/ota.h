@@ -37,5 +37,6 @@ void OTA(void *parameters)
   while (true)
   {
     ArduinoOTA.handle();
+    taskYIELD();
   }
 }

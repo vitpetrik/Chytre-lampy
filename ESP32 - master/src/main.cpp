@@ -1,7 +1,3 @@
-//Vít Petřík@2018
-/*
-Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
-*/
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
@@ -12,8 +8,8 @@ Mám úžasný a vysoce funkční kódy, omluvte  prehlednost :(
 #include <ArduinoOTA.h>
 
 // FreeRTOS Semaphore pro zamezeni konfliktu při přistupování triggrovacích proměnných
-SemaphoreHandle_t triggerRead_mutex = xSemaphoreCreateMutex();
-SemaphoreHandle_t triggerWrite_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t lamp_mutex = xSemaphoreCreateMutex();
 
 // init globalnich promennych
 uint8_t triggerPos[2] = {0, 0};
@@ -30,10 +26,13 @@ bool easterEgg = false;
 #include <telnet.h>
 #include <lamp.h>
 
+//Task pro ošéfení poloměru
 void lampTrigger(void *parameters)
 {
+  //inicializace
   uint8_t address = int(parameters);
   uint8_t pos[2] = {0, 0};
+
   unsigned long onMillis = 0;
   unsigned long lastTrigger = 0;
   bool on = false;
@@ -45,50 +44,44 @@ void lampTrigger(void *parameters)
 
   while (true)
   {
-    if (xSemaphoreTake(triggerWrite_mutex, 5))
+    if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE)
     {
-      lampCount++;
-      Serial.print("počet lamp: ");
-      Serial.println(lampCount);
-      xSemaphoreGive(triggerWrite_mutex);
-      break;
-    }
-  }
-
-  while (true)
-  {
-    if (lastTrigger != triggerNum)
-    {
-      if (xSemaphoreTake(triggerWrite_mutex, 5))
+      if (triggerNum != lastTrigger)
       {
         rad = sqrt(pow(pos[0] - triggerPos[0], 2) + pow(pos[1] - triggerPos[1], 2));
-        Serial.println("Zaznamenán nový trigger 😈");
+        lastTrigger = triggerNum;
+        triggerCount--;
+
+        if (triggerCount == 0)
+        {
+          xSemaphoreGive(lamp_mutex);
+        }
+        xSemaphoreGive(trigger_mutex);
+
         if (rad <= radius)
         {
-          Serial.println("Jsme v rádiu, nebo rádiusu... na češtinu jsem blbej 😭");
           if (!on)
           {
-            Serial.println("Zapínám vypnutou lampu 💡");
-            writePWM(address, high);
             on = true;
+            writePWM(address, high);
+            writeStringTelnetln("Z-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
           }
           onMillis = millis();
         }
-        lastTrigger = triggerNum;
-        triggerCount--;
-        Serial.print("triggerCount: ");
-        Serial.println(triggerCount);
-        xSemaphoreGive(triggerWrite_mutex);
+      }
+      else
+      {
+        xSemaphoreGive(trigger_mutex);
       }
     }
 
     if (on && (millis() - onMillis) > interval)
     {
-      Serial.println("Vypínám zapnutou lampu 😒");
       on = false;
       writePWM(address, low);
+      writeStringTelnetln("V-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
     }
-    delay(10);
+    taskYIELD();
   }
 }
 
@@ -99,7 +92,6 @@ void lamp(void *parameters)
   uint8_t address = int(parameters);
   uint8_t pos[2] = {0, 0};
 
-  delay(100);
   uint8_t *p = readPosition(address);
   pos[0] = p[0];
   pos[1] = p[1];
@@ -109,32 +101,28 @@ void lamp(void *parameters)
   {
     if (!easterEgg)
     {
-      if (readTouch(address) == 1)
+      if (xSemaphoreTake(lamp_mutex, 20) == pdTRUE)
       {
-        while (true)
+        if (readTouch(address) == 1)
         {
-          if (triggerCount < 1)
-          {
-            if (xSemaphoreTake(triggerWrite_mutex, 5))
-            {
-              triggerPos[0] = pos[0];
-              triggerPos[1] = pos[1];
-              triggerCount = lampCount;
-              triggerNum++;
-              xSemaphoreGive(triggerWrite_mutex);
-              Serial.println("Dotyk nahrán 🤓🤓");
-              delay(30);
-              break;
-            }
-          }
+          triggerPos[0] = pos[0];
+          triggerPos[1] = pos[1];
+          triggerCount = lampCount;
+          triggerNum++;
+          writeStringTelnetln("T-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+          delay(50);
+        }
+        else
+        {
+          xSemaphoreGive(lamp_mutex);
         }
       }
-      delay(30);
     }
     else
     {
       easterEggMode(address); //🦄🦄🦄🦄🦄🦄
     }
+    taskYIELD();
   }
   vTaskDelete(NULL);
 }
@@ -143,6 +131,17 @@ void lampInit(void *parameters)
 {
   uint8_t address = int(parameters);
   uint8_t pos[2] = {0, 0};
+
+  while (true)
+  {
+    if (xSemaphoreTake(trigger_mutex, 5) == pdTRUE)
+    {
+      lampCount++;
+      Serial.println("počet lamp: " + String(lampCount));
+      xSemaphoreGive(trigger_mutex);
+      break;
+    }
+  }
 
   writeMode(address, 1);
   delay(1);
@@ -162,16 +161,12 @@ void lampInit(void *parameters)
     delay(1);
     autonomusInterval(address, 5000);
   }
+
   // odeslani informace o poloze lampy pri jejim nalezeni na Telnet
   uint8_t *p = readPosition(address);
   pos[0] = p[0];
   pos[1] = p[1];
-  writeStringTelnet("Adresa: ");
-  writeStringTelnet(String(address));
-  writeStringTelnet(": X - ");
-  writeStringTelnet(String(pos[0]));
-  writeStringTelnet(" Y - ");
-  writeStringTelnetln(String(pos[1]));
+  writeStringTelnetln("L-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
 
   for (int i = 0; i < 3; i++)
   {
@@ -184,8 +179,8 @@ void lampInit(void *parameters)
   delay(10);
   writePWM(address, low);
 
-  xTaskCreatePinnedToCore(lamp, "lamp", 1000, (void *)address, 3, NULL, 1);
-  xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1000, (void *)address, 3, NULL, 1);
+  xTaskCreatePinnedToCore(lamp, "lamp", 1500, (void *)address, 3, NULL, 1);
+  xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)address, 3, NULL, 1);
 
   vTaskDelete(NULL);
 }
@@ -193,19 +188,6 @@ void lampInit(void *parameters)
 // vyhledani lampy na sbernici
 void scanner(void *parameters)
 {
-  while (false)
-  {
-    for (int i = 0; i < MAX_SRV_CLIENTS; i++)
-    {
-      if (serverClients[i] && serverClients[i].connected())
-      {
-        goto escapeLoop;
-      }
-    }
-    delay(1000);
-  }
-// vytvoreni tasku prave nalezene lampy
-escapeLoop:
   for (int i = 4; i < 50; i++)
   {
     if (isLampHere(i))
@@ -230,12 +212,9 @@ void setup()
   Serial.println("");
 
   WiFi.softAP("ChytreLampy", "");
-  //WiFi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
 
   MDNS.begin("chytrelampy");
   MDNS.addService("http", "tcp", 80);
-
-  //xTaskCreatePinnedToCore(lampInit, "lamp", 1000, (void *)17, 5, NULL, 1);
 
   xTaskCreatePinnedToCore(serverHandle, "server", 2000, (void *)1, 3, NULL, 1);
   xTaskCreatePinnedToCore(OTA, "OTA", 2000, (void *)1, 3, NULL, 1);

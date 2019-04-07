@@ -6,24 +6,40 @@ SemaphoreHandle_t telnet_mutex = xSemaphoreCreateMutex();
 
 void writeStringTelnetln(String s)
 {
-  Serial.println(s);
-  for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+  while (true)
   {
-    if (serverClients[i] && serverClients[i].connected())
+    if (xSemaphoreTake(telnet_mutex, 20) == pdTRUE)
     {
-      serverClients[i].println(s);
+      Serial.println(s);
+      for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+      {
+        if (serverClients[i] && serverClients[i].connected())
+        {
+          serverClients[i].println(s);
+        }
+      }
+      xSemaphoreGive(telnet_mutex);
+      break;
     }
   }
 }
 
 void writeStringTelnet(String s)
 {
-  Serial.print(s);
-  for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+  while (true)
   {
-    if (serverClients[i] && serverClients[i].connected())
+    if (xSemaphoreTake(telnet_mutex, 20) == pdTRUE)
     {
-      serverClients[i].print(s);
+      Serial.print(s);
+      for (int i = 0; i < MAX_SRV_CLIENTS; i++)
+      {
+        if (serverClients[i] && serverClients[i].connected())
+        {
+          serverClients[i].print(s);
+        }
+      }
+      xSemaphoreGive(telnet_mutex);
+      break;
     }
   }
 }
@@ -45,7 +61,7 @@ void serverHandle(void *parameters)
   while (true)
   {
     uint8_t i;
-    if (xSemaphoreTake(telnet_mutex, 0))
+    if (xSemaphoreTake(telnet_mutex, 40) == pdTRUE)
     {
       if (WiFi.status() == WL_CONNECTED || WiFi.status() == WL_NO_SHIELD)
       {
@@ -101,6 +117,6 @@ void serverHandle(void *parameters)
       }
       xSemaphoreGive(telnet_mutex);
     }
-    delay(1);
+    taskYIELD();
   }
 }

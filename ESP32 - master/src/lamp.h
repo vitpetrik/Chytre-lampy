@@ -1,6 +1,7 @@
 // parametr address je adresa lampy na i2c sbernici
 SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
 int tickCount = 5;
+
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
 {
@@ -24,6 +25,7 @@ bool isLampHere(uint8_t address)
   }
   return false;
 }
+
 //přečte hodnotu z dotykového čidla
 uint8_t readTouch(int address)
 {
@@ -36,6 +38,7 @@ uint8_t readTouch(int address)
   }
   return msg;
 }
+
 //přečte souřadnice a vrátí je v poli [ X, Y ]
 uint8_t *readPosition(uint8_t address)
 {
@@ -56,6 +59,7 @@ uint8_t *readPosition(uint8_t address)
   }
   return data;
 }
+
 //zapíše PWM hodnotu na I2C
 void writePWM(uint8_t address, uint8_t PWM)
 {
@@ -72,6 +76,7 @@ void writePWM(uint8_t address, uint8_t PWM)
     }
   }
 }
+
 //zapíše, jak rychle se má rozsvicet lampa
 void writeSpeed(uint8_t address, uint8_t speed)
 {
@@ -88,6 +93,7 @@ void writeSpeed(uint8_t address, uint8_t speed)
     }
   }
 }
+
 //zapíše, jestli má být plynulá změna úrovně osvětlení zapnuta/vypnuta
 void writeFade(uint8_t address, boolean fade)
 {
@@ -111,6 +117,7 @@ void writeFade(uint8_t address, boolean fade)
     }
   }
 }
+
 //zapíše novou I2C adresu
 void writeI2CAddress(uint8_t address, uint8_t newAddress)
 {
@@ -130,6 +137,7 @@ void writeI2CAddress(uint8_t address, uint8_t newAddress)
     }
   }
 }
+
 //zapíše souřadnice X a Y do ATtiny
 void writePosition(uint8_t address, uint8_t X, uint8_t Y)
 {
@@ -148,6 +156,7 @@ void writePosition(uint8_t address, uint8_t X, uint8_t Y)
   }
 }
 
+//Zapíše, z kolika měření se má zprůměrovat výsledek
 void writeSample(uint8_t address, uint8_t sample)
 {
   while (true)
@@ -163,6 +172,7 @@ void writeSample(uint8_t address, uint8_t sample)
     }
   }
 }
+
 // volba rezimu
 void writeMode(uint8_t address, uint8_t Mode)
 {
@@ -179,6 +189,7 @@ void writeMode(uint8_t address, uint8_t Mode)
     }
   }
 }
+
 // hodnota kapacitniho cidla ktera sepne lampu
 void writeThreshold(uint8_t address, uint8_t thres)
 {
@@ -195,6 +206,7 @@ void writeThreshold(uint8_t address, uint8_t thres)
     }
   }
 }
+
 // nastavi dobu zapnuto pri dotyku v autonomnim rezimu
 void autonomusInterval(uint8_t address, int inter)
 {
@@ -212,6 +224,7 @@ void autonomusInterval(uint8_t address, int inter)
     }
   }
 }
+
 // nastavi intenzitu osvetleni ve stavu zapnuto v autonomnim rezimu
 void autonomusHigh(uint8_t address, uint8_t PWM)
 {
@@ -228,6 +241,7 @@ void autonomusHigh(uint8_t address, uint8_t PWM)
     }
   }
 }
+
 // nastavi intenzitu osvetleni ve stavu vypnuto v autonomnim rezimu
 void autonomusLow(uint8_t address, uint8_t PWM)
 {
@@ -244,6 +258,7 @@ void autonomusLow(uint8_t address, uint8_t PWM)
     }
   }
 }
+
 // zapne/vypne spolecnou anodu
 void commonAnode(uint8_t address, bool commonAnode)
 {
@@ -268,6 +283,8 @@ void commonAnode(uint8_t address, bool commonAnode)
   }
 }
 
+//blikající DISCO mod, hodí se pro otestování
+//funknosti lamp
 void easterEggMode(uint8_t address)
 {
   if (random(0, 5) == 0)
@@ -278,5 +295,5 @@ void easterEggMode(uint8_t address)
   {
     writePWM(address, 5);
   }
-  delay(800);
+  delay(random(100, 1000));
 }
