@@ -31,54 +31,55 @@ void lampTrigger(void *parameters)
 {
   //inicializace
   uint8_t address = int(parameters);
+
   uint8_t pos[2] = {0, 0};
+  uint8_t *p = readPosition(address);
+  pos[0] = p[0];
+  pos[1] = p[1];
 
   unsigned long onMillis = 0;
   unsigned long lastTrigger = 0;
   bool on = false;
   double rad;
 
-  uint8_t *p = readPosition(address);
-  pos[0] = p[0];
-  pos[1] = p[1];
-
   while (true)
   {
-    if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE)
+    if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE) //požádá o semafor
     {
-      if (triggerNum != lastTrigger)
+      if (triggerNum != lastTrigger) //pokud je zaznamenán nový trigger
       {
-        rad = sqrt(pow(pos[0] - triggerPos[0], 2) + pow(pos[1] - triggerPos[1], 2));
+        rad = sqrt(pow(pos[0] - triggerPos[0], 2) + pow(pos[1] - triggerPos[1], 2)); //výpočet poloměru
         lastTrigger = triggerNum;
-        triggerCount--;
+        triggerCount--; //dekrementace
 
-        if (triggerCount == 0)
+        if (triggerCount == 0) //pokud trigger zpracovali všechny tasky uvolníme semafor pro čtení lamp
         {
           xSemaphoreGive(lamp_mutex);
         }
-        xSemaphoreGive(trigger_mutex);
+        xSemaphoreGive(trigger_mutex); //uvolníme semafor pro poloměr
 
-        if (rad <= radius)
+        if (rad <= radius) //pokud jsme v poloměru
         {
-          if (!on)
+          if (!on) //pokud je lampa zhasnutá
           {
             on = true;
-            writePWM(address, high);
+            writePWM(address, high); //zapneme lampu
             writeStringTelnetln("Z-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
           }
-          onMillis = millis();
+          onMillis = millis(); //nastavíme čas pro výpočet intervalu
         }
       }
       else
       {
-        xSemaphoreGive(trigger_mutex);
+        xSemaphoreGive(trigger_mutex); //vrátíme semafor pro poloměr
       }
     }
 
+    //pokud je lampa rozsvícena a zároveň jsme mimo interval
     if (on && (millis() - onMillis) > interval)
     {
       on = false;
-      writePWM(address, low);
+      writePWM(address, low); //vypneme lampu
       writeStringTelnetln("V-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
     }
     taskYIELD();
@@ -88,10 +89,10 @@ void lampTrigger(void *parameters)
 // task kazde lampy
 void lamp(void *parameters)
 {
-  // init lampy
+  //inicializace
   uint8_t address = int(parameters);
-  uint8_t pos[2] = {0, 0};
 
+  uint8_t pos[2] = {0, 0};
   uint8_t *p = readPosition(address);
   pos[0] = p[0];
   pos[1] = p[1];
@@ -99,21 +100,24 @@ void lamp(void *parameters)
   // smycka tasku lampy 💡
   while (true)
   {
+    //disco mód :)
     if (!easterEgg)
     {
-      if (xSemaphoreTake(lamp_mutex, 20) == pdTRUE)
+      if (xSemaphoreTake(lamp_mutex, 20) == pdTRUE) //požádáme o semafor pro čtení lamp
       {
-        if (readTouch(address) == 1)
+        if (readTouch(address) == 1) //pokud máme dotyk
         {
+          //zapíšeme souřadnice triggeru
           triggerPos[0] = pos[0];
           triggerPos[1] = pos[1];
           triggerCount = lampCount;
           triggerNum++;
           writeStringTelnetln("T-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
-          delay(50);
+          delay(50); //tato delay zde nemusí nutně být, ale malinko odlehčí sběrnici :)
         }
         else
         {
+          //pokud není dotyk vrátíme semafor, jinak ho nevracíme!!!
           xSemaphoreGive(lamp_mutex);
         }
       }
@@ -127,47 +131,34 @@ void lamp(void *parameters)
   vTaskDelete(NULL);
 }
 
+//nastavení lampy
 void lampInit(void *parameters)
 {
   uint8_t address = int(parameters);
+  
   uint8_t pos[2] = {0, 0};
+  uint8_t *p = readPosition(address);
+  pos[0] = p[0];
+  pos[1] = p[1];
 
+  //odeslani informace o poloze lampy pri jejim nalezeni na Telnet
+  writeStringTelnetln("L-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+
+  //inkrementace počtu lamp
   while (true)
   {
-    if (xSemaphoreTake(trigger_mutex, 5) == pdTRUE)
+    if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE)
     {
       lampCount++;
-      Serial.println("počet lamp: " + String(lampCount));
       xSemaphoreGive(trigger_mutex);
       break;
     }
   }
 
+  //nastavení módu lampy
   writeMode(address, 1);
-  delay(1);
-  if (true)
-  {
-    commonAnode(address, false);
-    delay(1);
-    writeSpeed(address, 1);
-    delay(1);
-    writeSample(address, 20);
-    delay(1);
-    writeThreshold(address, 150);
-    delay(1);
-    autonomusHigh(address, 255);
-    delay(1);
-    autonomusLow(address, 5);
-    delay(1);
-    autonomusInterval(address, 5000);
-  }
 
-  // odeslani informace o poloze lampy pri jejim nalezeni na Telnet
-  uint8_t *p = readPosition(address);
-  pos[0] = p[0];
-  pos[1] = p[1];
-  writeStringTelnetln("L-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
-
+  //3x zablikání lampy
   for (int i = 0; i < 3; i++)
   {
     writePWM(address, high);
@@ -176,9 +167,8 @@ void lampInit(void *parameters)
     delay(1000);
   }
   writePWM(address, low);
-  delay(10);
-  writePWM(address, low);
 
+  //vytvoření tasků nutných pro správné pracování
   xTaskCreatePinnedToCore(lamp, "lamp", 1500, (void *)address, 3, NULL, 1);
   xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)address, 3, NULL, 1);
 
@@ -192,6 +182,7 @@ void scanner(void *parameters)
   {
     if (isLampHere(i))
     {
+      //pokud jsme našli lampu vytvoříme pro ni task
       xTaskCreatePinnedToCore(lampInit, "lamp", 1000, (void *)i, 5, NULL, 1);
     }
     delay(1);
@@ -201,15 +192,13 @@ void scanner(void *parameters)
 
 void setup()
 {
-  // put your setup code here, to run once:
-  delay(800);
+  //inicializace ESP
+  delay(500); //"bezpečnostní" zpoždění¨
+
   Serial.begin(115200);
-  Wire.begin(22, 23); //ESP32 bez LoRa
+  Wire.begin(22, 23);
   pinMode(22, INPUT);
   pinMode(23, INPUT);
-
-  Serial.println("");
-  Serial.println("");
 
   WiFi.softAP("ChytreLampy", "");
 
