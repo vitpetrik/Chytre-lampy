@@ -20,6 +20,7 @@ int pinSwitch = 3;                // Pin centrálního spouštěcího a vypínac
 bool pohyb = false;
 int stateOne = 0;
 int stateTwo = 0;
+int stateSwitch = 0;
 int pocetSepnuti = 0;
 
 void setup()
@@ -76,7 +77,7 @@ void loop()
       Accelerate();
       pocetSepnuti++;
     }
-    delay(230*64);                  // Vyřešení nesymetrie magnetů na vláčku
+    delay(300*64);                  // Vyřešení nesymetrie magnetů na vláčku
     goto here;
   }
 
@@ -93,10 +94,12 @@ void loop()
 here:
   stateOne = stavKoncakOne;
   stateTwo = stavKoncakTwo;
+  stateSwitch = digitalRead(pinSwitch);
 }
 
 void change(){
   // Ovládání pohybu vláčku pomocí tlačítka vypnout/zapnout
+  if(!stateSwitch){           // ochrana proti několikánásobným stisknutím
     if(!pohyb){
       Accelerate();
       pohyb = true;
@@ -105,7 +108,8 @@ void change(){
       pocetSepnuti = 0;
       pohyb = false;
     }
-    delay(300*64);            // Ochrana proti několikánásobným stisknutím
+    stateSwitch = 1;
+  } 
 }
 
 // Zastavení vláčku
@@ -116,36 +120,36 @@ void Stop(){
 
 // Rozjezd vláčku
 void Accelerate(){
-  if(smer == 1 ){
-    for(int i = 0; i <= maxSpeed; i++){
+  for(int i = 0; i <= maxSpeed; i++){
+    if(smer == 1){
       analogWrite(pinOutOne, i);
       analogWrite(pinOutTwo, 0);
-      delay(accSpeed*64);
     }
-  }
-  if(smer == 2){
-    for(int i = 0; i <= maxSpeed; i++){
+    if(smer == 2){
       analogWrite(pinOutOne, 0);
       analogWrite(pinOutTwo, i);
-      delay(accSpeed*64);
     }
+    if(smer == 0){
+      Stop();                      // Nouzové zastavení při nedefinovaným stavu
+    }
+      delay(accSpeed*64);
   }
 }
 
 // Zpomalení vláčku
 void Break(){
-  if(smer == 1){
-    for(int i = maxSpeed; i >= slowSpeed; i--){
+  for(int i = maxSpeed; i >= slowSpeed; i--){
+    if(smer == 1){
       analogWrite(pinOutOne, i);
       analogWrite(pinOutTwo, 0);
-      delay(breakSpeed*64);
     }
-  }
-  if(smer == 2){
-    for(int i = maxSpeed; i >= slowSpeed; i--){
+    if(smer == 2){
       analogWrite(pinOutOne, 0);
       analogWrite(pinOutTwo, i);
-      delay(breakSpeed*64);
     }
+    if(smer == 0){
+      Stop();                      // Nouzové zastavení při nedefinovaným stavu
+    }
+    delay(breakSpeed*64);
   }
 }
