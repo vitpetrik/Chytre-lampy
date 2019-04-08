@@ -44,16 +44,6 @@ void writeStringTelnet(String s)
   }
 }
 
-void decodeString(String s)
-{
-  s.toLowerCase();
-  if (s.indexOf("easteregg") >= 0)
-  {
-    easterEgg = !easterEgg;
-    writeStringTelnetln("Prepnuti eastereggu 💡"); //juchuuu 🎆🎆🎆🎆🎆🎇🎈🧨✨🎉🎊🎃
-  }
-}
-
 void serverHandle(void *parameters)
 {
   server.begin();
@@ -88,12 +78,21 @@ void serverHandle(void *parameters)
           {
             if (serverClients[i].available())
             {
-              String data = "";
-              while (serverClients[i].available())
+              while (true)
               {
-                data += (char)serverClients[i].read();
+                if (xSemaphoreTake(telnetWrite_mutex, 20))
+                {
+                  telnetMessage = "";
+                  while (serverClients[i].available())
+                  {
+                    telnetMessage += (char)serverClients[i].read();
+                  }
+                  telnetMessage.toLowerCase();
+                  telnetNum++;
+                  telnetCount = lampCount;
+                  break;
+                }
               }
-              decodeString(data);
             }
           }
           else

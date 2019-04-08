@@ -1,6 +1,6 @@
 // parametr address je adresa lampy na i2c sbernici
 SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
-int tickCount = 5;
+int tickCount = 20;
 
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
@@ -285,7 +285,7 @@ void commonAnode(uint8_t address, bool commonAnode)
 
 //blikající DISCO mod, hodí se pro otestování
 //funknosti lamp
-void easterEggMode(uint8_t address)
+void disco(uint8_t address)
 {
   if (random(0, 5) == 0)
   {

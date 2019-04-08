@@ -10,17 +10,24 @@
 // FreeRTOS Semaphore pro zamezeni konfliktu při přistupování triggrovacích proměnných
 SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
 SemaphoreHandle_t lamp_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t telnetWrite_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t telnetRead_mutex = xSemaphoreCreateMutex();
 
 // init globalnich promennych
 uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
 unsigned long triggerNum = 0;
+
+String telnetMessage = "";
+uint8_t telnetCount = 0;
+unsigned long telnetNum = 0;
+
 uint8_t lampCount = 0;
+
 uint8_t low = 5;
 uint8_t high = 255;
 uint16_t interval = 1000;
 uint8_t radius = 25;
-bool easterEgg = false;
 
 #include <ota.h>
 #include <telnet.h>
@@ -91,6 +98,9 @@ void lamp(void *parameters)
 {
   //inicializace
   uint8_t address = int(parameters);
+  bool discoMode = false;
+  unsigned long lastTelnetNum = 0;
+  String foo = "";
 
   uint8_t pos[2] = {0, 0};
   uint8_t *p = readPosition(address);
@@ -100,8 +110,32 @@ void lamp(void *parameters)
   // smycka tasku lampy 💡
   while (true)
   {
+    if (xSemaphoreTake(telnetRead_mutex, 20))
+    {
+      if (lastTelnetNum != telnetNum)
+      {
+        foo = telnetMessage;
+        lastTelnetNum = telnetNum;
+        telnetCount--;
+
+        if (telnetCount == 0)
+        {
+          xSemaphoreGive(telnetWrite_mutex);
+        }
+        xSemaphoreGive(telnetRead_mutex);
+
+        if (foo.indexOf("disco") >= 0)
+        {
+          discoMode = !discoMode;
+        }
+      }
+      else
+      {
+        xSemaphoreGive(telnetRead_mutex);
+      }
+    }
     //disco mód :)
-    if (!easterEgg)
+    if (!discoMode)
     {
       if (xSemaphoreTake(lamp_mutex, 20) == pdTRUE) //požádáme o semafor pro čtení lamp
       {
@@ -124,7 +158,7 @@ void lamp(void *parameters)
     }
     else
     {
-      easterEggMode(address); //🦄🦄🦄🦄🦄🦄
+      disco(address); //🦄🦄🦄🦄🦄🦄
     }
     taskYIELD();
   }
@@ -135,7 +169,7 @@ void lamp(void *parameters)
 void lampInit(void *parameters)
 {
   uint8_t address = int(parameters);
-  
+
   uint8_t pos[2] = {0, 0};
   uint8_t *p = readPosition(address);
   pos[0] = p[0];
