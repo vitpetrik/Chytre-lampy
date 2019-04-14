@@ -10,17 +10,11 @@
 // FreeRTOS Semaphore pro zamezeni konfliktu při přistupování triggrovacích proměnných
 SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
 SemaphoreHandle_t lamp_mutex = xSemaphoreCreateMutex();
-SemaphoreHandle_t telnetWrite_mutex = xSemaphoreCreateMutex();
-SemaphoreHandle_t telnetRead_mutex = xSemaphoreCreateMutex();
 
 // init globalnich promennych
 uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
 unsigned long triggerNum = 0;
-
-String telnetMessage = "";
-uint8_t telnetCount = 0;
-unsigned long telnetNum = 0;
 
 uint8_t lampCount = 0;
 
@@ -30,7 +24,6 @@ uint16_t interval = 1000;
 uint8_t radius = 25;
 
 #include <ota.h>
-#include <telnet.h>
 #include <lamp.h>
 
 //Task pro ošéfení poloměru
@@ -59,7 +52,7 @@ void lampTrigger(void *parameters)
         lastTrigger = triggerNum;
         triggerCount--; //dekrementace
 
-        if (triggerCount == 0) //pokud trigger zpracovali všechny tasky uvolníme semafor pro čtení lamp
+        if (triggerCount < 1) //pokud trigger zpracovali všechny tasky uvolníme semafor pro čtení lamp
         {
           xSemaphoreGive(lamp_mutex);
         }
@@ -71,7 +64,7 @@ void lampTrigger(void *parameters)
           {
             on = true;
             writePWM(address, high); //zapneme lampu
-            writeStringTelnetln("Z-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+            Serial.println("Z-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
           }
           onMillis = millis(); //nastavíme čas pro výpočet intervalu
         }
@@ -87,7 +80,7 @@ void lampTrigger(void *parameters)
     {
       on = false;
       writePWM(address, low); //vypneme lampu
-      writeStringTelnetln("V-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+      Serial.println("V-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
     }
     taskYIELD();
   }
@@ -99,8 +92,6 @@ void lamp(void *parameters)
   //inicializace
   uint8_t address = int(parameters);
   bool discoMode = false;
-  unsigned long lastTelnetNum = 0;
-  String foo = "";
 
   uint8_t pos[2] = {0, 0};
   uint8_t *p = readPosition(address);
@@ -110,30 +101,6 @@ void lamp(void *parameters)
   // smycka tasku lampy 💡
   while (true)
   {
-    if (xSemaphoreTake(telnetRead_mutex, 20))
-    {
-      if (lastTelnetNum != telnetNum)
-      {
-        foo = telnetMessage;
-        lastTelnetNum = telnetNum;
-        telnetCount--;
-
-        if (telnetCount == 0)
-        {
-          xSemaphoreGive(telnetWrite_mutex);
-        }
-        xSemaphoreGive(telnetRead_mutex);
-
-        if (foo.indexOf("disco") >= 0)
-        {
-          discoMode = !discoMode;
-        }
-      }
-      else
-      {
-        xSemaphoreGive(telnetRead_mutex);
-      }
-    }
     //disco mód :)
     if (!discoMode)
     {
@@ -146,7 +113,7 @@ void lamp(void *parameters)
           triggerPos[1] = pos[1];
           triggerCount = lampCount;
           triggerNum++;
-          writeStringTelnetln("T-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+          Serial.println("T-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
           delay(50); //tato delay zde nemusí nutně být, ale malinko odlehčí sběrnici :)
         }
         else
@@ -176,7 +143,7 @@ void lampInit(void *parameters)
   pos[1] = p[1];
 
   //odeslani informace o poloze lampy pri jejim nalezeni na Telnet
-  writeStringTelnetln("L-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
+  Serial.println("L-I2C-" + String(address) + "-X-" + String(pos[0], HEX) + "-Y-" + String(pos[1], HEX));
 
   //inkrementace počtu lamp
   while (true)
@@ -191,6 +158,14 @@ void lampInit(void *parameters)
 
   //nastavení módu lampy
   writeMode(address, 1);
+  if (true)
+  {
+    writeSpeed(address, 5);
+    autonomusHigh(address, high);
+    autonomusLow(address, low);
+    autonomusInterval(address, 5000);
+    writeFade(address, true);
+  }
 
   //3x zablikání lampy
   for (int i = 0; i < 3; i++)
@@ -224,6 +199,23 @@ void scanner(void *parameters)
   vTaskDelete(NULL);
 }
 
+void draznilampa(void *parameters)
+{
+  for (int i = 0; i < 3; i++)
+  {
+    writePWM(13, 255);
+    delay(1000);
+    writePWM(13, 5);
+    delay(1000);
+  }
+  delay(10);
+  while (true)
+  {
+    Serial.println(readTouch(13));
+    delay(100);
+  }
+}
+
 void setup()
 {
   //inicializace ESP
@@ -235,13 +227,14 @@ void setup()
   pinMode(23, INPUT);
 
   WiFi.softAP("ChytreLampy", "");
+  //Wifi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
 
   MDNS.begin("chytrelampy");
   MDNS.addService("http", "tcp", 80);
 
-  xTaskCreatePinnedToCore(serverHandle, "server", 2000, (void *)1, 3, NULL, 1);
   xTaskCreatePinnedToCore(OTA, "OTA", 2000, (void *)1, 3, NULL, 1);
   xTaskCreatePinnedToCore(scanner, "scanner", 2000, (void *)1, 5, NULL, 1);
+  //xTaskCreatePinnedToCore(draznilampa, "scanner", 2000, (void *)1, 5, NULL, 1);
   vTaskDelete(NULL);
 }
 
