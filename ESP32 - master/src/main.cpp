@@ -39,7 +39,12 @@ typedef struct
 void lampTrigger(void *parameters)
 {
 	//inicializace
-	lampStruct *lampParam = (lampStruct *)parameters;
+	lampStruct *lampTemp = (lampStruct *)parameters;
+	lampStruct lampParam;
+	lampParam.I2C = lampTemp->I2C;
+	lampParam.X = lampTemp->X;
+	lampParam.Y = lampTemp->Y;
+	vTaskPrioritySet(NULL, 3);
 
 	unsigned long onMillis = 0;
 	unsigned long lastTrigger = 0;
@@ -52,7 +57,7 @@ void lampTrigger(void *parameters)
 		{
 			if (triggerNum != lastTrigger) //pokud je zaznamenán nový trigger
 			{
-				rad = sqrt(pow(lampParam->X - triggerPos[0], 2) + pow(lampParam->Y - triggerPos[1], 2)); //výpočet poloměru
+				rad = sqrt(pow(lampParam.X - triggerPos[0], 2) + pow(lampParam.Y - triggerPos[1], 2)); //výpočet poloměru
 				lastTrigger = triggerNum;
 				triggerCount--; //dekrementace
 
@@ -67,8 +72,8 @@ void lampTrigger(void *parameters)
 					if (!on) //pokud je lampa zhasnutá
 					{
 						on = true;
-						writePWM(lampParam->I2C, high); //zapneme lampu
-						Serial.println("Z-X-" + String(lampParam->X, HEX) + "-Y-" + String(lampParam->Y, HEX));
+						writePWM(lampParam.I2C, high); //zapneme lampu
+						Serial.println("Z-X-" + String(lampParam.X, HEX) + "-Y-" + String(lampParam.Y, HEX));
 					}
 					onMillis = millis(); //nastavíme čas pro výpočet intervalu
 				}
@@ -83,8 +88,8 @@ void lampTrigger(void *parameters)
 		if (on && (millis() - onMillis) > interval)
 		{
 			on = false;
-			writePWM(lampParam->I2C, low); //vypneme lampu
-			Serial.println("V-X-" + String(lampParam->X, HEX) + "-Y-" + String(lampParam->Y, HEX));
+			writePWM(lampParam.I2C, low); //vypneme lampu
+			Serial.println("V-X-" + String(lampParam.X, HEX) + "-Y-" + String(lampParam.Y, HEX));
 		}
 		taskYIELD();
 	}
@@ -94,21 +99,26 @@ void lampTrigger(void *parameters)
 void lamp(void *parameters)
 {
 	//inicializace
-	lampStruct *lampParam = (lampStruct *)parameters;
+	lampStruct *lampTemp = (lampStruct *)parameters;
+	lampStruct lampParam;
+	lampParam.I2C = lampTemp->I2C;
+	lampParam.X = lampTemp->X;
+	lampParam.Y = lampTemp->Y;
+	vTaskPrioritySet(NULL, 3);
 
 	// smycka tasku lampy 💡
 	while (true)
 	{
 		if (xSemaphoreTake(lamp_mutex, 20) == pdTRUE) //požádáme o semafor pro čtení lamp
 		{
-			if (readTouch(lampParam->I2C) == 1) //pokud máme dotyk
+			if (readTouch(lampParam.I2C) == 1) //pokud máme dotyk
 			{
 				//zapíšeme souřadnice triggeru
-				triggerPos[0] = lampParam->X;
-				triggerPos[1] = lampParam->Y;
+				triggerPos[0] = lampParam.X;
+				triggerPos[1] = lampParam.Y;
 				triggerCount = lampCount;
 				triggerNum++;
-				Serial.println("T-X-" + String(lampParam->X, HEX) + "-Y-" + String(lampParam->Y, HEX));
+				Serial.println("T-X-" + String(lampParam.X, HEX) + "-Y-" + String(lampParam.Y, HEX));
 				delay(50); //tato delay zde nemusí nutně být, ale malinko odlehčí sběrnici :)
 			}
 			else
@@ -127,6 +137,8 @@ void lampInit(void *parameters)
 {
 	lampStruct lampParam;
 	lampParam.I2C = int(parameters);
+
+	vTaskPrioritySet(NULL, 3);
 
 	uint8_t *p = readPosition(lampParam.I2C);
 	lampParam.X = p[0];
@@ -168,8 +180,8 @@ void lampInit(void *parameters)
 	writePWM(lampParam.I2C, low);
 
 	//vytvoření tasků nutných pro správné pracování
-	xTaskCreatePinnedToCore(lamp, "lamp", 1500, (void *)&lampParam, 3, NULL, 1);
-	xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)&lampParam, 3, NULL, 1);
+	xTaskCreatePinnedToCore(lamp, "lamp", 1500, (void *)&lampParam, 3, NULL, 10);
+	xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)&lampParam, 10, NULL, 1);
 
 	vTaskDelete(NULL);
 }
