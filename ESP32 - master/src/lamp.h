@@ -5,7 +5,6 @@ int tickCount = 20;
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
 {
-  bool presence = false;
   while (true)
   {
     if (xSemaphoreTake(i2c_mutex, tickCount) == pdTRUE)
