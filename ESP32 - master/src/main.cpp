@@ -3,35 +3,39 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <math.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
 
 // FreeRTOS Semaphore pro zamezeni konfliktu při přistupování triggrovacích proměnných
 SemaphoreHandle_t trigger_mutex = xSemaphoreCreateMutex();
 SemaphoreHandle_t lamp_mutex = xSemaphoreCreateMutex();
 SemaphoreHandle_t mqtt_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t i2c_mutex = xSemaphoreCreateMutex();
+SemaphoreHandle_t trainLamp_mutex = xSemaphoreCreateMutex();
+
+Adafruit_BME280 bme;
 
 // init globalnich promennych
+uint8_t trainPos[2] = {255, 255};
+uint8_t trainRadius = 25;
+
 uint8_t triggerPos[2] = {0, 0};
 uint8_t triggerCount = 0;
-unsigned long triggerNum = 0;
-
 uint8_t lampCount = 0;
+unsigned long triggerNum = 0;
 
 uint8_t low = 5;
 uint8_t high = 255;
 uint16_t interval = 1000;
 uint8_t radius = 25;
 
-typedef struct
+typedef struct lampStruct
 {
 	uint8_t I2C;
 	uint8_t X;
 	uint8_t Y;
 } lampStruct;
 
-#include <ota.h>
 #include <lamp.h>
 #include <mqtt.h>
 
@@ -132,6 +136,57 @@ void lamp(void *parameters)
 	vTaskDelete(NULL);
 }
 
+// task kazde lampy
+void trainLamp(void *parameters)
+{
+	//inicializace
+	lampStruct *lampTemp = (lampStruct *)parameters;
+	lampStruct lampParam;
+	lampParam.I2C = lampTemp->I2C;
+	lampParam.X = lampTemp->X;
+	lampParam.Y = lampTemp->Y;
+	vTaskPrioritySet(NULL, 3);
+
+	writeThreshold(lampParam.I2C, 30);
+	bool on = false;
+
+	// smycka tasku lampy 💡
+	while (true)
+	{
+		if (xSemaphoreTake(trainLamp_mutex, 20) == pdTRUE) //požádáme o semafor pro čtení lamp
+		{
+			if (readTouch(lampParam.I2C) == 1) //pokud máme dotyk
+			{
+				//zapíšeme souřadnice triggeru
+				trainPos[0] = lampParam.X;
+				trainPos[1] = lampParam.Y;
+				xSemaphoreGive(trainLamp_mutex);
+				on = true;
+				writePWM(lampParam.I2C, high);
+				Serial.println("T-X-" + String(lampParam.X, HEX) + "-Y-" + String(lampParam.Y, HEX));
+				delay(300); //tato delay zde nemusí nutně být, ale malinko odlehčí sběrnici :)
+			}
+			else
+			{
+				xSemaphoreGive(trainLamp_mutex);
+			}
+		}
+
+		if (sqrt(pow(lampParam.X - trainPos[0], 2) + pow(lampParam.Y - trainPos[1], 2)) <= trainRadius && !on)
+		{
+			writePWM(lampParam.I2C, high);
+			on = true;
+		}
+		else if (on)
+		{
+			writePWM(lampParam.I2C, low);
+			on = false;
+		}
+		taskYIELD();
+	}
+	vTaskDelete(NULL);
+}
+
 //nastavení lampy
 void lampInit(void *parameters)
 {
@@ -148,13 +203,16 @@ void lampInit(void *parameters)
 	Serial.println("L-I2C-" + String(lampParam.I2C) + "-X-" + String(lampParam.X, HEX) + "-Y-" + String(lampParam.Y, HEX));
 
 	//inkrementace počtu lamp
-	while (true)
+	if (lampParam.I2C < 40)
 	{
-		if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE)
+		while (true)
 		{
-			lampCount++;
-			xSemaphoreGive(trigger_mutex);
-			break;
+			if (xSemaphoreTake(trigger_mutex, 20) == pdTRUE)
+			{
+				lampCount++;
+				xSemaphoreGive(trigger_mutex);
+				break;
+			}
 		}
 	}
 
@@ -180,9 +238,15 @@ void lampInit(void *parameters)
 	writePWM(lampParam.I2C, low);
 
 	//vytvoření tasků nutných pro správné pracování
-	xTaskCreatePinnedToCore(lamp, "lamp", 1500, (void *)&lampParam, 3, NULL, 10);
-	xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)&lampParam, 10, NULL, 1);
-
+	if (lampParam.I2C < 40)
+	{
+		xTaskCreatePinnedToCore(lamp, "lamp", 2000, (void *)&lampParam, 10, NULL, 1);
+		xTaskCreatePinnedToCore(lampTrigger, "lampTrigger", 1500, (void *)&lampParam, 10, NULL, 1);
+	}
+	else if (lampParam.I2C < 50)
+	{
+		xTaskCreatePinnedToCore(trainLamp, "trainLamp", 2000, (void *)&lampParam, 10, NULL, 1);
+	}
 	vTaskDelete(NULL);
 }
 
@@ -194,7 +258,7 @@ void scanner(void *parameters)
 		if (isLampHere(i))
 		{
 			//pokud jsme našli lampu vytvoříme pro ni task
-			xTaskCreatePinnedToCore(lampInit, "lamp", 1000, (void *)i, 10, NULL, 1);
+			xTaskCreatePinnedToCore(lampInit, "lampInit", 1500, (void *)i, 10, NULL, 1);
 			taskYIELD();
 		}
 		delay(1);
@@ -202,20 +266,22 @@ void scanner(void *parameters)
 	vTaskDelete(NULL);
 }
 
-void draznilampa(void *parameters)
+void sensors(void *parameters)
 {
-	for (int i = 0; i < 3; i++)
-	{
-		writePWM(13, 255);
-		delay(1000);
-		writePWM(13, 5);
-		delay(1000);
-	}
-	delay(10);
+	float temp, press, hum;
 	while (true)
 	{
-		Serial.println(readTouch(13));
-		delay(100);
+		if (xSemaphoreTake(i2c_mutex, 20) == pdTRUE)
+		{
+			temp = bme.readTemperature();
+			press = bme.readPressure();
+			hum = bme.readHumidity();
+			xSemaphoreGive(i2c_mutex);
+			mqttPublish("Křemíkové zátiší/Shockleyův park/temperature", String(temp));
+			mqttPublish("Křemíkové zátiší/Shockleyův park/pressure", String(press));
+			mqttPublish("Křemíkové zátiší/Shockleyův park/humidity", String(hum));
+			delay(2000);
+		}
 	}
 }
 
@@ -229,16 +295,15 @@ void setup()
 	pinMode(22, INPUT);
 	pinMode(23, INPUT);
 
-	WiFi.softAP("ChytreLampy", "");
-	//Wifi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
+	bme.begin(0x76);
 
-	MDNS.begin("chytrelampy");
-	MDNS.addService("http", "tcp", 80);
+	//WiFi.softAP("ChytreLampy", "");
+	//Wifi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
+	//WiFi.begin("ThinkSpot", "0123456789");
 
 	//xTaskCreatePinnedToCore(mqtt, "MQTT", 5000, (void *)1, 3, NULL, 1);
-	xTaskCreatePinnedToCore(OTA, "OTA", 2000, (void *)1, 3, NULL, 1);
+	//xTaskCreatePinnedToCore(sensors, "sensor", 2000, (void *)1, 3, NULL, 1);
 	xTaskCreatePinnedToCore(scanner, "scanner", 2000, (void *)1, 5, NULL, 1);
-	//xTaskCreatePinnedToCore(draznilampa, "scanner", 2000, (void *)1, 5, NULL, 1);
 	vTaskDelete(NULL);
 }
 

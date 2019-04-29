@@ -64,7 +64,8 @@ void reconnect()
 
 void mqtt(void *parameters)
 {
-	client.setServer("10.10.10.11", 1883);
+	//client.setServer("10.10.10.11", 1883);
+	client.setServer("192.168.137.1", 1883);
 	client.setCallback(callback);
 
 	while (true)

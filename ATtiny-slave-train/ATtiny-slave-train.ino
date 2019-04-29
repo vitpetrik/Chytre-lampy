@@ -1,4 +1,4 @@
-#include <Wire.h>
+#include   <Wire.h>
 #include <EEPROM.h>
 
 #define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
@@ -15,14 +15,14 @@ int correction = 0;           //korekce, která se udělá po startu programu
 int threshold = 0;            //hodnota, nad kterou je sensor aktivní
 int interval = 0;             //interval pro autonomní řízení
 unsigned long onMillis = 0;   //millis pro autonomní řízení
-uint8_t address = 0;          //I2C adresa
+uint8_t address = 40;          //I2C adresa
 uint8_t pwmValue = 0;         //PWM hodnota na LEDce
 uint8_t prevPwmValue = 0;     //proměnná pro fading
 uint8_t rychlost = 0;         //rychlost fadingu
-uint8_t X = 0;                //X souřadnice
-uint8_t Y = 0;                //Y souřadnice
+uint8_t X = 9;                //X souřadnice
+uint8_t Y = 2;                //Y souřadnice
 uint8_t foo = 0;
-unsigned int bar = 0;
+int bar = 0;
 uint8_t autonomusHigh = 0;    //PWM hodnota pro rozsvícení pro autonomní režim
 uint8_t autonomusLow = 0;     //PWM hodnota pro pohasnutí pro autonmní režim
 uint8_t sample = 1;           //Z kolika měření se má zprůměrovat výsledná hodnota
@@ -34,6 +34,7 @@ boolean turnOn = false;       //Jestli jsme high nebo low
 boolean commonAnode = false;  //pokud by došlo ke špatnému zapojení LEDky, dalo by se to ještě spravit
 unsigned long fadeMicros = 0; //millis pro fading
 unsigned long milliRead = 0;  //ze senzoru čteme každých 10 miliSekund - není důvod po menších intervalech
+boolean triggerRecieved;
 
 //nastaví aktuální hodnotu PWM
 void setPWM(uint8_t pwm)
@@ -212,15 +213,8 @@ void loadEEPROM()
 
   //přečtení I2C adresy
   //Pokud přečteme hodnotu 0xFF nastavíme jako adresu 0x04
-  address = EEPROM.read(0x03);
-  if (address == 0x00 || address == 0xFF)
-  {
-    address = 0x04;
-  }
 
   //Načtení pozice
-  X = EEPROM.read(0x04);
-  Y = EEPROM.read(0x05);
 
   //Načtení hodnot low a high pro autonomní režim
   autonomusHigh = EEPROM.read(0x07);
@@ -267,6 +261,7 @@ void requestEvent()
   else
   {
     Wire.write(outputValue);
+    triggerRecieved = true;
   }
 }
 
@@ -295,19 +290,26 @@ void setup()
 
 void loop()
 {
-  if (((millis() - milliRead) > 10) && millis() > 1000)
+  if (triggerRecieved)
   {
-    milliRead = millis();
     bar = 0;
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 5; i++)
     {
       bar += analogRead(2);
     }
-    bar = bar / 10;
-    outputValue = map(bar, 0, 1023, 0, 255);
+
+    bar = bar/5;
+
+    if (bar > threshold)
+    {
+      outputValue = 1;
+      triggerRecieved = false;
+    }
+    else
+    {
+      outputValue = 0;
+    }
   }
-
-
   //Pokud se změnila PWM hodnota, budeme s tím něco dělat
   if (prevPwmValue != pwmValue)
   {
