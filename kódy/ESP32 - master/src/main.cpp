@@ -260,8 +260,6 @@ void setup()
 	pinMode(22, INPUT);
 	pinMode(23, INPUT);
 
-	//WiFi.softAP("ChytreLampy", "");
-	//Wifi.begin("💩💩💩🦄😵🏳‍🌈", "un1corn666");
 	xTaskCreatePinnedToCore(wifi, "wifi", 5000, (void *)1, 3, NULL, 1);
 	xTaskCreatePinnedToCore(scanner, "scanner", 2000, (void *)1, 5, NULL, 1);
 	vTaskDelete(NULL);
