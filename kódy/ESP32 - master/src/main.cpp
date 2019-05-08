@@ -80,7 +80,7 @@ void lampTrigger(void *parameters)
 				}
 				else if (lampParam.I2C > 39 && on)
 				{
-					writePWM(lampParam.I2C, low);
+					writePWM(lampParam.I2C, 10);
 					on = false;
 				}
 			}
@@ -174,7 +174,7 @@ void lampInit(void *parameters)
 		}
 		else
 		{
-			writeThreshold(lampParam.I2C, 30);
+			writeThreshold(lampParam.I2C, 15);
 		}
 		writeSpeed(lampParam.I2C, 5);
 		autonomusHigh(lampParam.I2C, high);
@@ -238,7 +238,6 @@ void sensors(void *parameters)
 
 void wifi(void *parameters)
 {
-	delay(5000);
 	WiFi.begin("ThinkSpot", "0123456789");
 	while (WiFi.status() != WL_CONNECTED)
 	{
@@ -253,7 +252,7 @@ void wifi(void *parameters)
 void setup()
 {
 	//inicializace ESP
-	delay(500); //"bezpečnostní" zpoždění¨
+	delay(500); //zpoždění pro minimalizaci škodlivéhpo vlivu přechodových jevů
 
 	Serial.begin(115200);
 	Wire.begin(22, 23);
