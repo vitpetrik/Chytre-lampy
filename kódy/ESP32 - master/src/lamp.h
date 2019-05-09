@@ -16,6 +16,7 @@ bool isLampHere(uint8_t address)
           xSemaphoreGive(i2c_mutex);
           return true;
         }
+        delay(1);
       }
       xSemaphoreGive(i2c_mutex);
       return false;

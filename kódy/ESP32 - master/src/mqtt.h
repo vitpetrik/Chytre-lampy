@@ -8,19 +8,22 @@ int value = 0;
 
 void mqttPublish(String topic, String message)
 {
-	int n = topic.length();
-	char topic_array[n + 1];
-	strcpy(topic_array, topic.c_str());
-	n = message.length();
-	char message_array[n + 1];
-	strcpy(message_array, message.c_str());
-	while (true)
+	if (client.connected())
 	{
-		if (xSemaphoreTake(mqtt_mutex, 20))
+		int n = topic.length();
+		char topic_array[n + 1];
+		strcpy(topic_array, topic.c_str());
+		n = message.length();
+		char message_array[n + 1];
+		strcpy(message_array, message.c_str());
+		while (true)
 		{
-			client.publish(topic_array, message_array);
-			xSemaphoreGive(mqtt_mutex);
-			return;
+			if (xSemaphoreTake(mqtt_mutex, 20))
+			{
+				client.publish(topic_array, message_array);
+				xSemaphoreGive(mqtt_mutex);
+				return;
+			}
 		}
 	}
 }
@@ -59,6 +62,7 @@ void reconnect()
 			// Wait 5 seconds before retrying
 			delay(5000);
 		}
+		taskYIELD();
 	}
 }
 
