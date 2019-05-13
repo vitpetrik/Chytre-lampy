@@ -82,7 +82,7 @@ void mqtt(void *parameters)
 			}
 			client.loop();
 			xSemaphoreGive(mqtt_mutex);
+			taskYIELD();
 		}
-		taskYIELD();
 	}
 }

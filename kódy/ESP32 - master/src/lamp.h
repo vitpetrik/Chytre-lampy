@@ -1,4 +1,4 @@
-// parametr address je adresa lampy na i2c sbernici
+﻿// parametr address je adresa lampy na i2c sbernici
 int tickCount = 20;
 
 // otestuje zda na dane adrese existuje zarizeni

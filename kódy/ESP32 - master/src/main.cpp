@@ -259,7 +259,7 @@ void scanner(void *parameters)
 		if (isLampHere(i))
 		{
 			//pokud jsme našli lampu vytvoříme pro ni task
-			xTaskCreatePinnedToCore(lampInit, "lampInit", 1500, (void *)i, 10, NULL, 1);
+			xTaskCreatePinnedToCore(lampInit, "lampInit", 2500, (void *)i, 10, NULL, 1);
 			taskYIELD();
 		}
 		delay(1);
@@ -275,7 +275,7 @@ void sensors(void *parameters)
 		if (xSemaphoreTake(i2c_mutex, 100) == pdTRUE)
 		{
 			temp = bme.readTemperature();
-			press = bme.readPressure();
+			press = bme.readPressure()/100;
 			hum = bme.readHumidity();
 			xSemaphoreGive(i2c_mutex);
 			mqttPublish("Křemíkové zátiší/Shockleyův park/temperature", String(temp));
@@ -289,7 +289,7 @@ void sensors(void *parameters)
 void taskIoT(void *parameters)
 {
 	IoT = true;
-	delay(2000);
+	delay(10000);
 	WiFi.begin("ThinkSpot", "0123456789");
 	while (WiFi.status() != WL_CONNECTED)
 	{
@@ -310,7 +310,7 @@ void setup()
 	pinMode(22, INPUT);
 	pinMode(23, INPUT);
 
-	xTaskCreatePinnedToCore(taskIoT, "IoT", 5000, (void *)1, 3, NULL, 1);
+	//xTaskCreatePinnedToCore(taskIoT, "IoT", 5000, (void *)1, 5, NULL, 1);
 	xTaskCreatePinnedToCore(scanner, "scanner", 2000, (void *)1, 5, NULL, 1);
 	vTaskDelete(NULL);
 }
