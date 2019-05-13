@@ -1,5 +1,5 @@
-﻿// parametr address je adresa lampy na i2c sbernici
-int tickCount = 20;
+// parametr address je adresa lampy na i2c sbernici
+int tickCount = 100;
 
 // otestuje zda na dane adrese existuje zarizeni
 bool isLampHere(uint8_t address)
@@ -292,7 +292,7 @@ void disco(uint8_t address)
   }
   else
   {
-    writePWM(address, 5);
+    writePWM(address, 0);
   }
   delay(random(100, 1000));
 }
