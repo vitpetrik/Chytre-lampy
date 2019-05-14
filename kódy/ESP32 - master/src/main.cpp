@@ -73,16 +73,16 @@ void lampTrigger(void *parameters)
 				{
 					if (!on) //pokud je lampa zhasnutá
 					{
-						writePWM(lampParam.I2C, high); //zapneme lampu
 						on = true;
+						writePWM(lampParam.I2C, high); //zapneme lampu
 						mqttPublish("/lamp/" + String(lampParam.I2C) + "/light", String(true));
 					}
 					onMillis = millis(); //nastavíme čas pro výpočet intervalu
 				}
 				else if (lampParam.I2C > 39 && on && lampParam.Y == tempY)
 				{
-					writePWM(lampParam.I2C, 10);
 					on = false;
+					writePWM(lampParam.I2C, 10);
 					mqttPublish("/lamp/" + String(lampParam.I2C) + "/light", String(false));
 				}
 			}
@@ -95,8 +95,8 @@ void lampTrigger(void *parameters)
 		//pokud je lampa rozsvícena a zároveň jsme mimo interval
 		if (on && (millis() - onMillis) > interval && lampParam.I2C < 40)
 		{
-			writePWM(lampParam.I2C, low); //vypneme lampu
 			on = false;
+			writePWM(lampParam.I2C, low); //vypneme lampu
 			mqttPublish("/lamp/" + String(lampParam.I2C) + "/light", String(false));
 		}
 		taskYIELD();
@@ -124,16 +124,16 @@ void lamp(void *parameters)
 		{
 			if (!foo)
 			{
-				writeSpeed(lampParam.I2C, 1);
 				foo = true;
+				writeSpeed(lampParam.I2C, 1);
 				writePWM(lampParam.I2C, 0);
 			}
 			disco(lampParam.I2C);
 		}
 		else if (foo)
 		{
-			writeSpeed(lampParam.I2C, 5);
 			foo = false;
+			writeSpeed(lampParam.I2C, 5);
 			writePWM(lampParam.I2C, low);
 		}
 		else if (xSemaphoreTake(lamp_mutex, 100) == pdTRUE) //požádáme o semafor pro čtení lamp
